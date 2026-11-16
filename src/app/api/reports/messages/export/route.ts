@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAuthContext } from "@/lib/auth";
+import { getAuthContext, isPlatformAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { MessageStatus } from "@prisma/client";
 
@@ -15,6 +15,9 @@ export async function GET(request: Request) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   const url = new URL(request.url);
+  const requestedOrganizationId = url.searchParams.get("organizationId");
+  if (requestedOrganizationId && !isPlatformAdminUser(context.user)) return NextResponse.json({ error: "Platform admin access required." }, { status: 403 });
+  const organizationId = requestedOrganizationId || context.organization.id;
   const statusParam = url.searchParams.get("status");
   const campaignId = url.searchParams.get("campaignId") || undefined;
   const fromParam = url.searchParams.get("from");
@@ -26,7 +29,7 @@ export async function GET(request: Request) {
   }
   const messages = await prisma.message.findMany({
     where: {
-      organizationId: context.organization.id,
+      organizationId,
       ...(statusParam ? { status: statusParam as MessageStatus } : {}),
       ...(campaignId ? { campaignId } : {}),
       ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
