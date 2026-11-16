@@ -8,6 +8,7 @@ import { ArrowLeft, CalendarClock, Check, Loader2, RefreshCw, Save, Users } from
 
 type Contact = { id: string; phoneNumberE164: string; firstName: string | null; lastName: string | null; email: string | null; company: string | null };
 type Sender = { id: string; displayName: string; phoneNumberE164: string; status: string };
+type Validation = { ready: boolean; issues: string[]; checks: { hasMessage: boolean; senderConnected: boolean; selectedRecipients: number; currentlyEligibleRecipients: number; suppressedRecipients: number } };
 type Campaign = { id: string; name: string; description: string | null; messageBody: string | null; status: string; scheduledAt: string | null; sender: Sender | null; recipients: { contact: { id: string } }[]; _count: { recipients: number; messages: number } };
 async function readJson(response: Response) { const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Something went wrong."); return data; }
 const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
@@ -30,6 +31,8 @@ export default function CampaignDetailPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [validation, setValidation] = useState<Validation | null>(null);
+  const [validating, setValidating] = useState(false);
   const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
@@ -69,6 +72,15 @@ export default function CampaignDetailPage() {
     finally { setBusy(false); }
   }
 
+  async function validateCampaign() {
+    setValidating(true); setError(""); setValidation(null);
+    try {
+      const data = await readJson(await fetch(`/api/campaigns/${campaignId}/validate`, { method: "POST" }));
+      setValidation(data);
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to validate campaign."); }
+    finally { setValidating(false); }
+  }
+
   const visible = contacts.filter(contact => {
     const haystack = [contact.firstName, contact.lastName, contact.phoneNumberE164, contact.email, contact.company].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(query.toLowerCase());
@@ -80,11 +92,13 @@ export default function CampaignDetailPage() {
   return <div className="min-h-screen bg-[#f6f8f6]">
     <header className="sticky top-0 z-10 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/90 px-5 backdrop-blur-xl md:px-8">
       <div className="flex items-center gap-3"><Link href="/campaigns" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><ArrowLeft size={18}/></Link><div><p className="text-xs text-slate-400">Workspace / Campaigns</p><h1 className="text-lg font-semibold text-slate-900">Campaign editor</h1></div></div>
-      {editable && <button onClick={() => void save()} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy?<Loader2 className="animate-spin" size={16}/>:<Save size={16}/>} Save draft</button>}
+      {editable && <div className="flex items-center gap-2"><button onClick={() => void validateCampaign()} disabled={validating} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50">{validating?<Loader2 className="animate-spin" size={16}/>:<Check size={16}/>} Validate</button><button onClick={() => void save()} disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy?<Loader2 className="animate-spin" size={16}/>:<Save size={16}/>} Save draft</button></div>}
     </header>
     <main className="mx-auto max-w-[1200px] p-5 md:p-8">
       {error && <p className="mb-4 rounded-xl bg-rose-50 p-3 text-xs text-rose-700">{error}</p>}
       {notice && <p className="mb-4 rounded-xl bg-emerald-50 p-3 text-xs text-emerald-800">{notice}</p>}
+      {validation && <section className={`mb-5 rounded-2xl border p-4 ${validation.ready ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}><div className="flex items-center justify-between gap-3"><h3 className={`text-sm font-semibold ${validation.ready ? "text-emerald-900" : "text-amber-900"}`}>{validation.ready ? "Campaign checks passed" : "Campaign needs attention"}</h3><span className="text-xs font-semibold">{validation.checks.currentlyEligibleRecipients}/{validation.checks.selectedRecipients} recipients eligible</span></div>{validation.issues.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-900">{validation.issues.map(issue=><li key={issue}>{issue}</li>)}</ul>}{validation.ready && <p className="mt-2 text-xs text-emerald-800">The draft currently meets the campaign readiness checks. This does not queue or send messages.</p>}</section>}
+
       {!campaign ? <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">Campaign not found.</div> : <>
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">Draft configuration and consent-filtered recipient snapshot</p><h2 className="mt-1 text-2xl font-semibold text-slate-900">{campaign.name}</h2></div><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">{campaign.status}</span></div>
         {!editable && <p className="mb-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">Only draft campaigns can be edited.</p>}
