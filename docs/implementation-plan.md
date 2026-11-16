@@ -71,10 +71,13 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 
 ## Milestone 5 — SaaS operations
 - [ ] Team inbox only for supported, authorized channels
+- [x] Workspace team invitations with single-use expiring links and role-based membership
 - [x] Workspace analytics overview with CRM/sender/campaign totals, message outcomes and 14-day trend
-- [ ] Detailed reports, exports and usage ledger
-- [ ] Plans, subscriptions and billing
-- [ ] Super Admin and audit logs
+- [x] Tenant-scoped contact and filtered message CSV exports with per-message charge, status and provider receipt timestamps
+- [x] Prepaid wallet, admin-controlled per-message pricing, immutable credit ledger and atomic campaign queue charging
+- [ ] Plans, subscriptions, invoices and payment gateway integration
+- [x] Platform-admin client credit allocation and pricing console with audit events
+- [ ] Full Super Admin operations, client lifecycle controls and audit log viewer
 - [ ] Retention, deletion and incident-response workflows
 
 ## Engineering controls
