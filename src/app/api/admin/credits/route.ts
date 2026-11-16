@@ -43,6 +43,9 @@ export async function POST(request: Request) {
         create: { organizationId },
         update: {},
       });
+      if (account.balancePaise + amountPaise > 2_000_000_000) {
+        throw new Error("CREDIT_BALANCE_LIMIT");
+      }
       const updated = amountPaise > 0
         ? await tx.creditAccount.update({ where: { id: account.id }, data: { balancePaise: { increment: amountPaise }, ...(pricePerMessagePaise === undefined ? {} : { pricePerMessagePaise }) } })
         : await tx.creditAccount.update({ where: { id: account.id }, data: pricePerMessagePaise === undefined ? {} : { pricePerMessagePaise } });
@@ -76,6 +79,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "CREDIT_BALANCE_LIMIT") return NextResponse.json({ error: "This top-up would exceed the wallet balance limit." }, { status: 400 });
     console.error("Admin credit update failed", error);
     return NextResponse.json({ error: "Unable to update client credits or pricing." }, { status: 500 });
   }
