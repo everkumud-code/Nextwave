@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
+import { findUnsupportedTemplateVariables } from "@/lib/message-template";
 
 export const runtime = "nodejs";
 const campaignSelect = {
-  id: true, name: true, description: true, status: true, channel: true,
+  id: true, name: true, description: true, messageBody: true, status: true, channel: true,
   scheduledAt: true, createdAt: true, updatedAt: true,
   sender: { select: { id: true, displayName: true, phoneNumberE164: true, status: true } },
   _count: { select: { recipients: true, messages: true } },
@@ -36,6 +37,8 @@ export async function POST(request: Request) {
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
     const description = typeof body.description === "string" ? body.description.trim().slice(0, 1000) || null : null;
     const senderId = typeof body.senderId === "string" && body.senderId ? body.senderId : null;
+    const messageBody = typeof body.messageBody === "string" ? body.messageBody.trim().slice(0, 4096) || null : null;
+    if (messageBody && findUnsupportedTemplateVariables(messageBody).length) return NextResponse.json({ error: "Message contains unsupported template variables." }, { status: 400 });
     if (!name) return NextResponse.json({ error: "Campaign name is required." }, { status: 400 });
 
     if (senderId) {
