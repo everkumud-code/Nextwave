@@ -91,6 +91,7 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         recipient: job.recipientE164,
         body: job.body,
         idempotencyKey: job.idempotencyKey,
+        lockToken: job.lockToken,
         consentRecordId: contact.consents[0].id,
       });
 
