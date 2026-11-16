@@ -46,6 +46,7 @@ Validation commands:
 - `docs/qr-session-risk-assessment.md`
 - `docs/database-architecture.md`
 - `docs/qr-session-architecture.md`
+- `docs/qr-session-service-api.md`
 - `src/lib/connectors/types.ts`
 
 ## Safety, privacy and compliance
