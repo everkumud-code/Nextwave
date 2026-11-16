@@ -11,6 +11,7 @@ import makeWASocket, {
 import { Boom } from "@hapi/boom";
 import pino from "pino";
 import { PrismaClient } from "@prisma/client";
+import { highestReceiptStatus, receiptCanAdvance, type QrDeliveryStatus } from "./receipt-status.js";
 
 const prisma = new PrismaClient();
 const logger = pino({ level: process.env.QR_LOG_LEVEL || "silent" });
@@ -271,7 +272,7 @@ async function startSocket(session: RuntimeSession) {
       const status = update.update?.status;
       if (!providerMessageId || typeof status !== "number") continue;
       const mapped = mapBaileysReceiptStatus(status);
-      if (mapped) void persistDeliveryUpdate(providerMessageId, mapped).catch((error) => logger.error({ error }, "Could not persist message delivery update"));
+      if (mapped) void persistDeliveryUpdate(session.organizationId, session.senderId, providerMessageId, mapped).catch((error) => logger.error({ error }, "Could not persist message delivery update"));
     }
   });
 
@@ -461,55 +462,86 @@ async function restoreSessions() {
 
 
 
-async function persistDeliveryUpdate(providerMessageId: string, status: "SENT" | "DELIVERED" | "READ") {
+async function persistDeliveryUpdate(
+  organizationId: string,
+  senderId: string,
+  providerMessageId: string,
+  incomingStatus: QrDeliveryStatus,
+) {
+  const receipt = await prisma.qrDeliveryReceipt.upsert({
+    where: { organizationId_senderId_providerMessageId: { organizationId, senderId, providerMessageId } },
+    create: { organizationId, senderId, providerMessageId, status: incomingStatus },
+    update: { receivedAt: new Date() },
+  });
+  const effectiveStatus = highestReceiptStatus(receipt.status, incomingStatus);
+  if (effectiveStatus !== receipt.status) {
+    await prisma.qrDeliveryReceipt.update({
+      where: { id: receipt.id },
+      data: { status: effectiveStatus, receivedAt: new Date() },
+    });
+  }
+
   const message = await prisma.message.findFirst({
-    where: { providerMessageId },
-    select: { id: true, organizationId: true, campaignId: true, recipientE164: true },
+    where: { organizationId, senderId, providerMessageId },
+    select: { id: true, campaignId: true, recipientE164: true, status: true },
   });
   if (!message) return;
 
-  const previousStatuses: Array<"QUEUED" | "SUBMITTED" | "SENT" | "DELIVERED"> = status === "SENT"
-    ? ["QUEUED", "SUBMITTED"]
-    : status === "DELIVERED"
-      ? ["QUEUED", "SUBMITTED", "SENT"]
-      : ["QUEUED", "SUBMITTED", "SENT", "DELIVERED"];
-  const updated = await prisma.message.updateMany({
-    where: { id: message.id, status: { in: previousStatuses } },
-    data: {
-      status,
-      deliveredAt: status === "DELIVERED" || status === "READ" ? new Date() : undefined,
-      readAt: status === "READ" ? new Date() : undefined,
-      lockedAt: null,
-      lockToken: null,
-    },
+  if (receiptCanAdvance(message.status, effectiveStatus)) {
+    const priorStatuses = effectiveStatus === "SENT"
+      ? ["QUEUED", "SUBMITTED", "FAILED"]
+      : effectiveStatus === "DELIVERED"
+        ? ["QUEUED", "SUBMITTED", "SENT", "FAILED"]
+        : ["QUEUED", "SUBMITTED", "SENT", "DELIVERED", "FAILED"];
+    await prisma.message.updateMany({
+      where: { id: message.id, organizationId, senderId, status: { in: priorStatuses as never[] } },
+      data: {
+        status: effectiveStatus,
+        deliveredAt: effectiveStatus === "DELIVERED" || effectiveStatus === "READ" ? new Date() : undefined,
+        readAt: effectiveStatus === "READ" ? new Date() : undefined,
+        lockedAt: null,
+        lockToken: null,
+      },
+    });
+  }
+
+  await prisma.qrDeliveryReceipt.updateMany({
+    where: { id: receipt.id, appliedAt: null },
+    data: { appliedAt: new Date() },
   });
-  if (!updated.count) return;
 
-  if (message.campaignId) {
-    const contact = await prisma.contact.findFirst({
-      where: { organizationId: message.organizationId, phoneNumberE164: message.recipientE164 },
-      select: { id: true },
+  if (!message.campaignId) return;
+  const contact = await prisma.contact.findFirst({
+    where: { organizationId, phoneNumberE164: message.recipientE164 },
+    select: { id: true },
+  });
+  if (contact) {
+    await prisma.campaignRecipient.updateMany({
+      where: {
+        campaignId: message.campaignId,
+        contactId: contact.id,
+        status: { in: ["QUEUED", "SUBMITTED", "SENT", "DELIVERED", "FAILED"] },
+      },
+      data: { status: effectiveStatus },
     });
-    if (contact) {
-      await prisma.campaignRecipient.updateMany({
-        where: {
-          campaignId: message.campaignId,
-          contactId: contact.id,
-          status: { in: ["QUEUED", "SUBMITTED", "SENT", "DELIVERED"] },
-        },
-        data: { status },
-      });
-    }
+  }
 
-    const remaining = await prisma.message.count({
-      where: { campaignId: message.campaignId, status: { in: ["QUEUED", "SUBMITTED", "SENT"] } },
+  const [remaining, successful, failed] = await Promise.all([
+    prisma.message.count({
+      where: { organizationId, campaignId: message.campaignId, status: { in: ["QUEUED", "SUBMITTED", "SENT"] } },
+    }),
+    prisma.message.count({
+      where: { organizationId, campaignId: message.campaignId, status: { in: ["DELIVERED", "READ"] } },
+    }),
+    prisma.message.count({
+      where: { organizationId, campaignId: message.campaignId, status: "FAILED" },
+    }),
+  ]);
+  if (remaining === 0) {
+    await prisma.campaign.updateMany({
+      where: { id: message.campaignId, organizationId, status: { in: ["QUEUED", "RUNNING", "FAILED"] } },
+      data: { status: successful === 0 && failed > 0 ? "FAILED" : "COMPLETED", completedAt: new Date() },
     });
-    if (remaining === 0) {
-      await prisma.campaign.updateMany({
-        where: { id: message.campaignId, status: { in: ["QUEUED", "RUNNING"] } },
-        data: { status: "COMPLETED", completedAt: new Date() },
-      });
-    }
   }
 }
 
@@ -584,6 +616,14 @@ async function sendMessage(body: Record<string, unknown>) {
     const latest = await prisma.message.findUnique({ where: { id: message.id }, select: { providerMessageId: true } });
     if (!latest?.providerMessageId) throw Object.assign(new Error("Message was sent but its provider reference could not be persisted."), { statusCode: 503, errorCode: "TEMPORARY_PROVIDER_ERROR" });
     return { accepted: true, providerMessageId: latest.providerMessageId, state: "SUBMITTED" };
+  }
+
+  const pendingReceipt = await prisma.qrDeliveryReceipt.findUnique({
+    where: { organizationId_senderId_providerMessageId: { organizationId, senderId, providerMessageId } },
+    select: { status: true, appliedAt: true },
+  });
+  if (pendingReceipt && !pendingReceipt.appliedAt) {
+    await persistDeliveryUpdate(organizationId, senderId, providerMessageId, pendingReceipt.status);
   }
 
   session.lastSeenAt = new Date().toISOString();
