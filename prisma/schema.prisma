@@ -103,6 +103,7 @@ model Organization {
   memberships Membership[]
   senders     Sender[]
   contacts    Contact[]
+  contactGroups ContactGroup[]
   campaigns   Campaign[]
   sessions    QrSession[]
   qrCredentials QrCredential[]
@@ -238,6 +239,7 @@ model Contact {
   organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   consents        ConsentRecord[]
   campaignTargets CampaignRecipient[]
+  groupMemberships ContactGroupMember[]
 
   @@unique([organizationId, phoneNumberE164])
   @@index([organizationId, status])
@@ -372,4 +374,31 @@ model QrDeliveryReceipt {
 
   @@unique([organizationId, senderId, providerMessageId])
   @@index([organizationId, senderId, appliedAt])
+}
+
+
+model ContactGroup {
+  id             String              @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members        ContactGroupMember[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, updatedAt])
+}
+
+model ContactGroupMember {
+  id        String       @id @default(cuid())
+  groupId   String
+  contactId String
+  createdAt DateTime     @default(now())
+  group     ContactGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  contact   Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, contactId])
+  @@index([contactId])
 }
