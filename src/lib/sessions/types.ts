@@ -44,7 +44,7 @@ export interface QrPairingChallenge {
 
 export interface QrSessionProvider {
   createSession(input: CreateQrSessionInput): Promise<QrPairingChallenge>;
-  getStatus(providerSessionId: string): Promise<{
+  getStatus(providerSessionId: string, organizationId: string): Promise<{
     status: QrSessionStatus;
     connectedAt?: string;
     lastSeenAt?: string;
@@ -54,7 +54,7 @@ export interface QrSessionProvider {
     errorCode?: string;
     errorMessage?: string;
   }>;
-  revokeSession(providerSessionId: string): Promise<void>;
+  revokeSession(providerSessionId: string, organizationId: string): Promise<void>;
 }
 
 export interface QrSessionRepository {
