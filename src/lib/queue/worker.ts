@@ -10,6 +10,7 @@ export type ClaimedMessage = {
   senderId: string | null;
   recipientE164: string;
   body: string | null;
+  idempotencyKey: string;
   attemptCount: number;
   maxAttempts: number;
   lockToken: string;
@@ -55,7 +56,7 @@ export async function claimQueuedMessages(limit = 25): Promise<ClaimedMessage[]>
       FROM candidates
       WHERE message."id" = candidates."id"
       RETURNING message."id", message."organizationId", message."campaignId",
-        message."senderId", message."recipientE164", message."body",
+        message."senderId", message."recipientE164", message."body", message."idempotencyKey",
         message."attemptCount", message."maxAttempts", message."lockToken"
     `);
   });
