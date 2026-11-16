@@ -6,6 +6,19 @@ import { claimQueuedMessages, markMessageSubmitted, retryOrFailMessage } from ".
 
 export type DispatchBatchResult = { claimed: number; submitted: number; retried: number; failed: number };
 
+async function reconcileCampaign(organizationId: string, campaignId: string) {
+  const [remaining, successful, failed] = await Promise.all([
+    prisma.message.count({ where: { organizationId, campaignId, status: { in: ["QUEUED", "SUBMITTED", "SENT"] } } }),
+    prisma.message.count({ where: { organizationId, campaignId, status: { in: ["DELIVERED", "READ"] } } }),
+    prisma.message.count({ where: { organizationId, campaignId, status: "FAILED" } }),
+  ]);
+  if (remaining > 0) return;
+  await prisma.campaign.updateMany({
+    where: { id: campaignId, organizationId, status: { in: ["QUEUED", "RUNNING"] } },
+    data: { status: successful === 0 && failed > 0 ? "FAILED" : "COMPLETED", completedAt: new Date() },
+  });
+}
+
 export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResult> {
   const registry = createConnectorRegistry();
   const hasConfiguredConnector = registry.list().some(item => registry.get(item.type).getCapabilities().configured);
@@ -56,6 +69,7 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
               data: { status: "FAILED" },
             });
           }
+          if (job.campaignId) await reconcileCampaign(job.organizationId, job.campaignId);
         } else result.retried += 1;
       }
     };
