@@ -41,7 +41,7 @@ counts and a paginated recent message list.
 
 ## Not yet enabled
 
-The QR adapter now sends through the self-hosted Baileys runtime at `POST /v1/messages` when `QR_SESSION_SERVICE_URL` and `QR_SESSION_SERVICE_TOKEN` are configured. The Meta Cloud adapter remains a scaffold and reports `configured: false`. The queue runner refuses to start if no registered connector is configured. End-to-end delivery still requires deployment and live sender verification. Delivery receipt webhooks, campaign completion reconciliation and scheduled dispatch remain separate milestones.
+The QR adapter now sends through the self-hosted Baileys runtime at `POST /v1/messages` when `QR_SESSION_SERVICE_URL` and `QR_SESSION_SERVICE_TOKEN` are configured. The Meta Cloud adapter remains a scaffold and reports `configured: false`. The queue runner refuses to start if no registered connector is configured. End-to-end delivery still requires deployment and live sender verification. The QR runtime now maps Baileys server-ack, delivery-ack and read receipts into `SENT`, `DELIVERED` and `READ` message states and completes campaigns when no non-terminal jobs remain. Meta Cloud webhook reconciliation and scheduled dispatch remain separate milestones.
 
 ## Database migration
 
