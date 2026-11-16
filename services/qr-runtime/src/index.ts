@@ -101,7 +101,8 @@ function isAuthorized(request: IncomingMessage) {
 async function createAuthState(credentialId: string) {
   const credential = await prisma.qrCredential.findUnique({ where: { id: credentialId } });
   if (!credential) throw new Error("QR credential record is missing.");
-  const creds = deserialize<AuthenticationCreds>(decrypt(credential.encryptedCreds, credentialId));
+  const credentialContext = `${credential.organizationId}:${credential.senderId}:${credentialId}`;
+  const creds = deserialize<AuthenticationCreds>(decrypt(credential.encryptedCreds, credentialContext));
 
   const keyStore = {
     get: async (keyType: string, ids: string[]) => {
@@ -111,7 +112,7 @@ async function createAuthState(credentialId: string) {
       });
       return Object.fromEntries(rows.map((row) => [
         row.keyId,
-        deserialize<unknown>(decrypt(row.encryptedValue, `${credentialId}:${keyType}:${row.keyId}`)),
+        deserialize<unknown>(decrypt(row.encryptedValue, `${credentialContext}:${keyType}:${row.keyId}`)),
       ]));
     },
     set: async (data: Record<string, Record<string, unknown | null>>) => {
@@ -122,7 +123,7 @@ async function createAuthState(credentialId: string) {
           } else {
             await prisma.qrSignalKey.upsert({
               where: { credentialId_keyType_keyId: { credentialId, keyType, keyId } },
-              create: { credentialId, keyType, keyId, encryptedValue: encrypt(serialize(value), `${credentialId}:${keyType}:${keyId}`) },
+              create: { credentialId, keyType, keyId, encryptedValue: encrypt(serialize(value), `${credentialContext}:${keyType}:${keyId}`) },
               update: { encryptedValue: encrypt(serialize(value), `${credentialId}:${keyType}:${keyId}`) },
             });
           }
@@ -138,7 +139,7 @@ async function createAuthState(credentialId: string) {
     saveCreds: async () => {
       await prisma.qrCredential.update({
         where: { id: credentialId },
-        data: { encryptedCreds: encrypt(serialize(creds), credentialId) },
+        data: { encryptedCreds: encrypt(serialize(creds), credentialContext) },
       });
     },
   };
@@ -338,7 +339,7 @@ async function createSession(body: Record<string, unknown>) {
   const id = randomUUID();
   const creds = initAuthCreds();
   await prisma.qrCredential.create({
-    data: { id, organizationId, senderId, encryptedCreds: encrypt(serialize(creds), id) },
+    data: { id, organizationId, senderId, encryptedCreds: encrypt(serialize(creds), `${organizationId}:${senderId}:${id}`) },
   });
   const session = createRuntimeSession({ id, organizationId, senderId });
   sessions.set(id, session);
