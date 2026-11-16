@@ -19,6 +19,7 @@
 ## Client controls
 - `GET /api/credits` returns the current wallet and recent ledger entries.
 - `PATCH /api/credits/settings` stores a preferred interval from 10 to 90 seconds; default is 60 seconds.
+- Campaign queueing staggers each new message using the workspace interval and accounts for queued backlog and the latest provider submission for that sender. This is a fixed configured spacing, not automatic interval rotation; provider-enforced limits remain authoritative.
 - The selected interval is a preference only until a supported, authorized provider connector enforces its own documented throughput limits. It does not rotate automatically and is not a mechanism to bypass provider limits.
 
 ## Team
