@@ -12,6 +12,7 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
   const result: DispatchBatchResult = { claimed: jobs.length, submitted: 0, retried: 0, failed: 0 };
 
   for (const job of jobs) {
+    let recipientContactId: string | null = null;
     const fail = async (errorCode: string, errorMessage: string, retryable = isRetryableConnectorError(errorCode)) => {
       const update = await retryOrFailMessage({
         messageId: job.id,
@@ -23,8 +24,16 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         retryable,
       });
       if (update.count) {
-        if (retryable && job.attemptCount < job.maxAttempts) result.retried += 1;
-        else result.failed += 1;
+        const terminal = !retryable || job.attemptCount >= job.maxAttempts;
+        if (terminal) {
+          result.failed += 1;
+          if (job.campaignId && recipientContactId) {
+            await prisma.campaignRecipient.updateMany({
+              where: { campaignId: job.campaignId, contactId: recipientContactId, status: "QUEUED" },
+              data: { status: "FAILED" },
+            });
+          }
+        } else result.retried += 1;
       }
     };
 
@@ -49,6 +58,7 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         }),
       ]);
 
+      recipientContactId = contact?.id ?? null;
       if (!sender || sender.status !== "CONNECTED") {
         await fail("SENDER_NOT_CONNECTED", "The assigned sender is no longer connected.", false);
         continue;
