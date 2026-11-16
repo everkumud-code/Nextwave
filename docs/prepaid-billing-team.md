@@ -10,6 +10,7 @@
 - Existing workspace IDs and slugs are not regenerated when credits are added.
 
 ## Admin controls
+- Bootstrap platform administrators by setting the comma-separated `PLATFORM_ADMIN_EMAILS` environment variable to trusted account email addresses; the existing database admin flag is also honored.
 - `GET /api/admin/credits` lists client workspaces and wallet settings; platform-admin access is required.
 - `POST /api/admin/credits` adds prepaid paise and/or updates the per-message paise rate.
 - Every admin operation is written to the organization audit log.
