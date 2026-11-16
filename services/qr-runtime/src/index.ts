@@ -456,15 +456,38 @@ async function sendMessage(body: Record<string, unknown>) {
   const messageBody = typeof body.body === "string" ? body.body : "";
   const idempotencyKey = typeof body.idempotencyKey === "string" ? body.idempotencyKey : "";
   const lockToken = typeof body.lockToken === "string" ? body.lockToken : "";
+  const consentRecordId = typeof body.consentRecordId === "string" ? body.consentRecordId : "";
 
   if (!organizationId || !senderId || !idempotencyKey || !lockToken || !/^\+[1-9]\d{7,14}$/.test(recipient) || !messageBody.trim() || messageBody.length > 4096) {
     throw Object.assign(new Error("organizationId, senderId, E.164 recipient, message body, idempotencyKey and lockToken are required."), { statusCode: 400, errorCode: "INVALID_MESSAGE" });
   }
 
-  const message = await prisma.message.findFirst({
-    where: { organizationId, senderId, recipientE164: recipient, idempotencyKey },
-    select: { id: true, status: true, lockToken: true, providerMessageId: true, body: true },
-  });
+  const [sender, contact, message] = await Promise.all([
+    prisma.sender.findFirst({
+      where: { id: senderId, organizationId, connector: "QR_SESSION", status: "CONNECTED", archivedAt: null, organization: { status: "ACTIVE" } },
+      select: { id: true },
+    }),
+    prisma.contact.findFirst({
+      where: { organizationId, phoneNumberE164: recipient, status: "ACTIVE" },
+      select: {
+        consents: {
+          where: { channel: "WHATSAPP", purpose: "MARKETING" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: { id: true, status: true },
+        },
+      },
+    }),
+    prisma.message.findFirst({
+      where: { organizationId, senderId, recipientE164: recipient, idempotencyKey },
+      select: { id: true, status: true, lockToken: true, providerMessageId: true, body: true },
+    }),
+  ]);
+  if (!sender) throw Object.assign(new Error("Sender is not connected or does not belong to an active workspace."), { statusCode: 409, errorCode: "SENDER_NOT_CONNECTED" });
+  const latestConsent = contact?.consents[0];
+  if (!latestConsent || latestConsent.status !== "GRANTED" || latestConsent.id !== consentRecordId) {
+    throw Object.assign(new Error("Recipient marketing consent is no longer current."), { statusCode: 409, errorCode: "CONSENT_REVOKED" });
+  }
   if (!message) throw Object.assign(new Error("Queued message was not found for this workspace and sender."), { statusCode: 404, errorCode: "MESSAGE_NOT_FOUND" });
   if (message.body !== messageBody) throw Object.assign(new Error("Message body does not match the persisted queue job."), { statusCode: 409, errorCode: "MESSAGE_PAYLOAD_MISMATCH" });
   if (message.providerMessageId) return { accepted: true, providerMessageId: message.providerMessageId, state: "SUBMITTED" };
