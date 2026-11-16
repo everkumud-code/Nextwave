@@ -1,0 +1,89 @@
+# Render Blueprint for NextWave.
+# Supply the prompted secrets in the Render dashboard. Use the same QR service token
+# on the web app, QR runtime and queue worker.
+databases:
+  - name: nextwave-postgres
+    databaseName: nextwave
+    user: nextwave
+    plan: basic-256mb
+    region: singapore
+    ipAllowList: []
+
+services:
+  - type: web
+    name: nextwave-web
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    preDeployCommand: npm run db:deploy
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nextwave-postgres
+          property: connectionString
+      - key: AUTH_SECRET
+        sync: false
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: QR_SESSION_SERVICE_URL
+        value: http://nextwave-qr-runtime:4100
+      - key: QR_SESSION_SERVICE_TOKEN
+        sync: false
+      - key: QR_SESSION_REQUEST_TIMEOUT_MS
+        value: "30000"
+
+  - type: pserv
+    name: nextwave-qr-runtime
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerfilePath: ./services/qr-runtime/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nextwave-postgres
+          property: connectionString
+      - key: QR_SESSION_PORT
+        value: "4100"
+      - key: QR_SESSION_SERVICE_TOKEN
+        sync: false
+      - key: QR_CREDENTIAL_ENCRYPTION_KEY
+        sync: false
+      - key: QR_LOG_LEVEL
+        value: info
+
+  - type: worker
+    name: nextwave-queue-worker
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: npm run queue:worker
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nextwave-postgres
+          property: connectionString
+      - key: QUEUE_WORKER_ENABLED
+        value: "true"
+      - key: QUEUE_WORKER_BATCH_SIZE
+        value: "25"
+      - key: QUEUE_WORKER_POLL_INTERVAL_MS
+        value: "1000"
+      - key: QR_SESSION_SERVICE_URL
+        value: http://nextwave-qr-runtime:4100
+      - key: QR_SESSION_SERVICE_TOKEN
+        sync: false
+      - key: QR_SESSION_REQUEST_TIMEOUT_MS
+        value: "30000"
