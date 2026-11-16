@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
+import { findUnsupportedTemplateVariables } from "@/lib/message-template";
 
 export const runtime = "nodejs";
 type RouteContext = { params: Promise<{ campaignId: string }> };
@@ -13,7 +14,7 @@ export async function GET(_request: Request, route: RouteContext) {
   const campaign = await prisma.campaign.findFirst({
     where: { id: campaignId, organizationId: context.organization.id },
     select: {
-      id: true, name: true, description: true, status: true, channel: true,
+      id: true, name: true, description: true, messageBody: true, status: true, channel: true,
       scheduledAt: true, createdAt: true, updatedAt: true,
       sender: { select: { id: true, displayName: true, phoneNumberE164: true, status: true } },
       recipients: {
@@ -45,7 +46,7 @@ export async function PATCH(request: Request, route: RouteContext) {
 
   try {
     const body = await request.json();
-    const data: { name?: string; description?: string | null; senderId?: string | null; scheduledAt?: Date | null } = {};
+    const data: { name?: string; description?: string | null; messageBody?: string | null; senderId?: string | null; scheduledAt?: Date | null } = {};
     let recipientContactIds: string[] | undefined;
 
     if (body.name !== undefined) {
@@ -55,6 +56,14 @@ export async function PATCH(request: Request, route: RouteContext) {
     if (body.description !== undefined) {
       if (body.description !== null && typeof body.description !== "string") return NextResponse.json({ error: "Description must be text." }, { status: 400 });
       data.description = typeof body.description === "string" ? body.description.trim().slice(0, 1000) || null : null;
+    }
+    if (body.messageBody !== undefined) {
+      if (body.messageBody !== null && typeof body.messageBody !== "string") return NextResponse.json({ error: "Message content must be text." }, { status: 400 });
+      const messageBody = typeof body.messageBody === "string" ? body.messageBody.trim() : "";
+      if (messageBody.length > 4096) return NextResponse.json({ error: "Message content must be 4,096 characters or fewer." }, { status: 400 });
+      const unsupported = findUnsupportedTemplateVariables(messageBody);
+      if (unsupported.length) return NextResponse.json({ error: `Unsupported template variables: ${unsupported.join(", ")}` }, { status: 400 });
+      data.messageBody = messageBody || null;
     }
     if (body.senderId !== undefined) {
       if (body.senderId === null || body.senderId === "") data.senderId = null;
