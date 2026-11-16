@@ -21,7 +21,7 @@ const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 te
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
-  const [total, setTotal] = useState(0);
+  const [total, setTotal] = useState(0);\n  const [nextCursor, setNextCursor] = useState<string | null>(null);\n  const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -36,12 +36,25 @@ export default function ContactsPage() {
       const params = new URLSearchParams();
       if (search.trim()) params.set("q", search.trim());
       const data = await readJson(await fetch("/api/contacts?" + params.toString(), { cache: "no-store" }));
-      setContacts(data.contacts); setTotal(data.total);
+      setContacts(data.contacts); setTotal(data.total); setNextCursor(data.nextCursor ?? null);
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to load contacts."); }
     finally { setLoading(false); }
   }, [query]);
 
   useEffect(() => { void loadContacts(""); }, [loadContacts]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({ cursor: nextCursor });
+      if (query.trim()) params.set("q", query.trim());
+      const data = await readJson(await fetch("/api/contacts?" + params.toString(), { cache: "no-store" }));
+      setContacts(current => [...current, ...data.contacts]);
+      setNextCursor(data.nextCursor ?? null);
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to load more contacts."); }
+    finally { setLoadingMore(false); }
+  }
 
   async function addContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
@@ -85,7 +98,7 @@ export default function ContactsPage() {
         {error && <div className="mx-4 mt-4 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-700">{error}</div>}
         {notice && <div className="mx-4 mt-4 rounded-xl bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800">{notice}<button onClick={()=>setNotice("")} className="float-right"><X size={14}/></button></div>}
         {loading ? <div className="flex items-center justify-center gap-2 p-14 text-sm text-slate-400"><RefreshCw className="animate-spin" size={16}/> Loading contacts…</div> : contacts.length ? <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left"><thead><tr className="border-b border-slate-100 bg-slate-50/70 text-[10px] font-bold uppercase tracking-wider text-slate-400"><th className="px-5 py-3">Contact</th><th className="px-4 py-3">Phone</th><th className="px-4 py-3">Company</th><th className="px-4 py-3">Contact status</th><th className="px-4 py-3">WhatsApp consent</th><th className="px-5 py-3 text-right">Updated</th></tr></thead><tbody>{contacts.map(contact => { const consent = contact.consents.find(c=>c.channel==="WHATSAPP"&&c.purpose==="MARKETING"); return <tr key={contact.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60"><td className="px-5 py-4"><p className="text-xs font-semibold text-slate-800">{[contact.firstName,contact.lastName].filter(Boolean).join(" ") || "Unnamed contact"}</p><p className="mt-1 text-[11px] text-slate-400">{contact.email || "No email"}</p></td><td className="px-4 py-4 text-xs text-slate-600">{contact.phoneNumberE164}</td><td className="px-4 py-4 text-xs text-slate-600">{contact.company || "—"}</td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${contact.status==="ACTIVE"?"bg-emerald-50 text-emerald-700":contact.status==="UNSUBSCRIBED"?"bg-amber-50 text-amber-700":"bg-slate-100 text-slate-600"}`}>{contact.status}</span></td><td className="px-4 py-4"><button onClick={()=>void recordConsent(contact)} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${consent?.status==="GRANTED"?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-600"}`}>{consent?.status==="GRANTED"?"Granted · withdraw":"Not granted · record"}</button></td><td className="px-5 py-4 text-right text-xs text-slate-500">{new Date(contact.createdAt).toLocaleDateString()}</td></tr>; })}</tbody></table></div> : <div className="px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-[#1c4b35]"><Contact size={22}/></div><h4 className="mt-4 text-sm font-semibold text-slate-900">{query?"No matching contacts":"Your contact database is empty"}</h4><p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-500">Add a contact to start building your workspace audience. CSV import is the next CRM milestone.</p><button onClick={()=>setShowForm(true)} className="mt-4 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-xs font-semibold text-white"><UserPlus size={14} className="mr-1 inline"/> Add first contact</button></div>}
-        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-5 py-3"><span className="text-[11px] text-slate-400">Contacts are isolated by workspace</span><button onClick={()=>void loadContacts()} className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800"><RefreshCw size={13}/> Refresh</button></div>
+        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 px-5 py-3"><span className="text-[11px] text-slate-400">Showing {contacts.length} of {total} · workspace isolated</span><div className="flex items-center gap-4">{nextCursor && <button disabled={loadingMore} onClick={()=>void loadMore()} className="text-xs font-semibold text-[#1c4b35] disabled:opacity-50">{loadingMore?"Loading…":"Load more"}</button>}<button onClick={()=>void loadContacts()} className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800"><RefreshCw size={13}/> Refresh</button></div></div>
       </section>
       <div className="mt-5 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/70 p-4"><ShieldCheck className="mt-0.5 shrink-0 text-blue-700" size={17}/><p className="text-xs leading-relaxed text-blue-900"><b>Consent is recorded as an auditable event.</b> Grant or withdrawal creates a new consent record; the previous record is retained in the contact history. Only explicitly granted contacts should be selected for marketing campaigns.</p></div>
     </main>
