@@ -43,7 +43,7 @@ export class QrSessionManager {
       });
     } catch (error) {
       // Avoid orphaning a provider-side session if the durable write fails.
-      await this.provider.revokeSession(challenge.providerSessionId).catch(() => undefined);
+      await this.provider.revokeSession(challenge.providerSessionId, input.organizationId).catch(() => undefined);
       throw error;
     }
   }
@@ -52,14 +52,14 @@ export class QrSessionManager {
     const session = await this.requireSession(organizationId, sessionId);
     if (!session.providerSessionId) throw new Error("Session is missing its provider reference.");
 
-    const remote = await this.provider.getStatus(session.providerSessionId);
+    const remote = await this.provider.getStatus(session.providerSessionId, organizationId);
     const now = new Date().toISOString();
 
     const updated = await this.repository.update(organizationId, sessionId, {
       status: remote.status,
       connectedAt: remote.connectedAt ?? session.connectedAt,
       lastSeenAt: remote.lastSeenAt ?? session.lastSeenAt,
-      credentialRef: remote.credentialRef ?? session.credentialRef,
+      credentialRef: ["DISCONNECTED", "REVOKED", "ERROR"].includes(remote.status) ? undefined : remote.credentialRef ?? session.credentialRef,
       lastErrorCode: remote.errorCode,
       lastErrorMessage: remote.errorMessage,
       updatedAt: now,
@@ -76,7 +76,7 @@ export class QrSessionManager {
   async revoke(organizationId: string, sessionId: string): Promise<QrSession> {
     const session = await this.requireSession(organizationId, sessionId);
     if (session.providerSessionId) {
-      await this.provider.revokeSession(session.providerSessionId);
+      await this.provider.revokeSession(session.providerSessionId, organizationId);
     }
 
     return this.repository.update(organizationId, sessionId, {
