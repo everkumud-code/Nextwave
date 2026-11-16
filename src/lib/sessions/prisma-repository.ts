@@ -78,7 +78,6 @@ export class PrismaQrSessionRepository implements QrSessionRepository {
     if ("lastErrorMessage" in patch) data.lastErrorMessage = patch.lastErrorMessage ?? null;
     if (patch.status === "REVOKED") data.revokedAt = new Date();
     if (patch.status === "REVOKED" || patch.status === "DISCONNECTED" || patch.status === "ERROR") data.activeKey = null;
-    if (patch.status === "CONNECTED" || patch.status === "QR_PENDING" || patch.status === "PAIRING" || patch.status === "RECONNECTING") data.activeKey = `${organizationId}:${(await this.findById(organizationId, sessionId))?.senderId ?? ""}`;
 
     const result = await this.db.qrSession.updateMany({
       where: { id: sessionId, organizationId },
