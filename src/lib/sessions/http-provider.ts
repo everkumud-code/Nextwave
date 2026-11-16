@@ -40,7 +40,7 @@ export class HttpQrSessionProvider implements QrSessionProvider {
     }
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.token = token;
-    this.timeoutMs = config?.timeoutMs ?? Number(process.env.QR_SESSION_REQUEST_TIMEOUT_MS ?? 10000);
+    this.timeoutMs = config?.timeoutMs ?? Number(process.env.QR_SESSION_REQUEST_TIMEOUT_MS ?? 30000);
   }
 
   async createSession(input: CreateQrSessionInput): Promise<QrPairingChallenge> {
@@ -55,8 +55,8 @@ export class HttpQrSessionProvider implements QrSessionProvider {
     };
   }
 
-  async getStatus(providerSessionId: string): Promise<ServiceSessionStatus> {
-    const data = await this.request(`/v1/sessions/${encodeURIComponent(providerSessionId)}`, {
+  async getStatus(providerSessionId: string, organizationId: string): Promise<ServiceSessionStatus> {
+    const data = await this.request(`/v1/sessions/${encodeURIComponent(providerSessionId)}?organizationId=${encodeURIComponent(organizationId)}`, {
       method: "GET",
     });
     const allowed: QrSessionStatus[] = [
@@ -78,9 +78,10 @@ export class HttpQrSessionProvider implements QrSessionProvider {
     };
   }
 
-  async revokeSession(providerSessionId: string): Promise<void> {
+  async revokeSession(providerSessionId: string, organizationId: string): Promise<void> {
     await this.request(`/v1/sessions/${encodeURIComponent(providerSessionId)}`, {
       method: "DELETE",
+      body: JSON.stringify({ organizationId }),
     });
   }
 
