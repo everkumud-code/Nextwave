@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw, ShieldCheck, Wallet } from "lucide-react";
 
@@ -32,7 +32,7 @@ export default function AdminCreditsPage() {
   const current=clients.find(c=>c.id===selected);
   function choose(id:string) { setSelected(id); const c=clients.find(x=>x.id===id); setRate(String(c?.creditAccount?.pricePerMessagePaise ?? 10)); }
 
-  async function submit(e:React.FormEvent) {
+  async function submit(e:FormEvent) {
     e.preventDefault(); setSaving(true); setError(""); setNotice("");
     const rupeeValue=Number(amount || 0); const paiseRate=Number(rate);
     if(!Number.isFinite(rupeeValue) || rupeeValue<0 || rupeeValue>20000000 || !Number.isSafeInteger(paiseRate) || paiseRate<1) {
