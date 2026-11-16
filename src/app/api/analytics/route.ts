@@ -20,7 +20,7 @@ export async function GET() {
     prisma.sender.count({ where: { organizationId, archivedAt: null, status: "CONNECTED" } }),
     prisma.campaign.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true } }),
     prisma.message.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true } }),
-    prisma.$queryRaw<DailyStat[]>\`
+    prisma.$queryRaw<DailyStat[]>`
       SELECT date_trunc('day', "createdAt") AS day,
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE "status" = 'DELIVERED')::int AS delivered,
@@ -30,7 +30,7 @@ export async function GET() {
       WHERE "organizationId" = ${organizationId} AND "createdAt" >= ${since}
       GROUP BY date_trunc('day', "createdAt")
       ORDER BY day ASC
-    \`,
+    `,
   ]);
 
   const messageCounts = Object.fromEntries(messages.map(item => [item.status, item._count._all]));
