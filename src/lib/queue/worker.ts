@@ -21,21 +21,19 @@ export async function claimQueuedMessages(limit = 25): Promise<ClaimedMessage[]>
 
   return prisma.$transaction(async tx => {
     const now = new Date();
-    await tx.message.updateMany({
-      where: {
-        status: "QUEUED",
-        attemptCount: { gte: 5 },
-        nextAttemptAt: { lte: now },
-        OR: [{ lockedAt: null }, { lockedAt: { lt: new Date(now.getTime() - 5 * 60_000) } }],
-      },
-      data: {
-        status: "FAILED",
-        lockToken: null,
-        lockedAt: null,
-        errorCode: "MAX_ATTEMPTS_EXCEEDED",
-        errorMessage: "Message exceeded its retry limit.",
-      },
-    });
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE "Message"
+      SET "status" = 'FAILED',
+          "lockToken" = NULL,
+          "lockedAt" = NULL,
+          "errorCode" = 'MAX_ATTEMPTS_EXCEEDED',
+          "errorMessage" = 'Message exceeded its retry limit.',
+          "updatedAt" = NOW()
+      WHERE "status" = 'QUEUED'
+        AND "attemptCount" >= "maxAttempts"
+        AND "nextAttemptAt" <= NOW()
+        AND ("lockedAt" IS NULL OR "lockedAt" < NOW() - INTERVAL '5 minutes')
+    `);
 
     return tx.$queryRaw<ClaimedMessage[]>(Prisma.sql`
       WITH candidates AS (
