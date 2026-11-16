@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAuthContext, canManageSenders } from "@/lib/auth";
+import { getAuthContext, canManageSenders, isPlatformAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
 import { findUnsupportedTemplateVariables } from "@/lib/message-template";
@@ -12,17 +12,21 @@ const campaignSelect = {
   _count: { select: { recipients: true, messages: true } },
 } as const;
 
-export async function GET() {
+export async function GET(request: Request) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  const requestedOrganizationId = new URL(request.url).searchParams.get("organizationId");
+  const isAdmin = isPlatformAdminUser(context.user);
+  if (requestedOrganizationId && !isAdmin) return NextResponse.json({ error: "Platform admin access required." }, { status: 403 });
+  const organizationId = requestedOrganizationId || context.organization.id;
   const [campaigns, eligibleIds] = await Promise.all([
     prisma.campaign.findMany({
-      where: { organizationId: context.organization.id },
+      where: { organizationId },
       orderBy: { createdAt: "desc" },
       take: 100,
       select: campaignSelect,
     }),
-    getEligibleWhatsAppMarketingContactIds(context.organization.id, 100000),
+    getEligibleWhatsAppMarketingContactIds(organizationId, 100000),
   ]);
   return NextResponse.json({ campaigns, eligibleAudience: eligibleIds.length });
 }
@@ -30,10 +34,13 @@ export async function GET() {
 export async function POST(request: Request) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  if (!canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to create campaigns." }, { status: 403 });
-
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const requestedOrganizationId = typeof body.organizationId === "string" ? body.organizationId : null;
+    const isAdmin = isPlatformAdminUser(context.user);
+    if (requestedOrganizationId && !isAdmin) return NextResponse.json({ error: "Platform admin access required." }, { status: 403 });
+    if (!requestedOrganizationId && !canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to create campaigns." }, { status: 403 });
+    const organizationId = requestedOrganizationId || context.organization.id;
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
     const description = typeof body.description === "string" ? body.description.trim().slice(0, 1000) || null : null;
     const senderId = typeof body.senderId === "string" && body.senderId ? body.senderId : null;
@@ -43,14 +50,14 @@ export async function POST(request: Request) {
 
     if (senderId) {
       const sender = await prisma.sender.findFirst({
-        where: { id: senderId, organizationId: context.organization.id, archivedAt: null },
+        where: { id: senderId, organizationId, archivedAt: null },
         select: { id: true, status: true },
       });
       if (!sender) return NextResponse.json({ error: "Sender not found in this workspace." }, { status: 404 });
       if (sender.status !== "CONNECTED") return NextResponse.json({ error: "Select a connected sender to assign this campaign." }, { status: 409 });
     }
 
-    const eligibleIds = await getEligibleWhatsAppMarketingContactIds(context.organization.id, 5001);
+    const eligibleIds = await getEligibleWhatsAppMarketingContactIds(organizationId, 5001);
     if (eligibleIds.length > 5000) return NextResponse.json({ error: "Audience exceeds the 5,000-recipient campaign planning limit." }, { status: 400 });
 
     const campaign = await prisma.$transaction(async tx => {
