@@ -26,9 +26,9 @@ export async function GET() {
     }),
   ]);
   return NextResponse.json({
-    eligible,
+    eligible: eligibleIds.length,
     total,
-    suppressed: total - eligible,
+    suppressed: total - eligibleIds.length,
     withdrawnOrUnsubscribed: withdrawn,
     inactiveOrBlocked: inactive,
     rule: "Only ACTIVE contacts whose latest WhatsApp MARKETING consent is GRANTED are included.",
