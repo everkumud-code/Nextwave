@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
-import { createSession } from "@/lib/auth";
+import { assertAuthConfigured, createSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -11,6 +11,7 @@ function slugify(value: string) {
 
 export async function POST(request: Request) {
   try {
+    assertAuthConfigured();
     const body = await request.json();
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 80) : "";
     const organizationName = typeof body.organizationName === "string" ? body.organizationName.trim().slice(0, 100) : "";
