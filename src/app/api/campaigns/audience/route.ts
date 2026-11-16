@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
 
 export const runtime = "nodejs";
 
@@ -8,14 +9,8 @@ export async function GET() {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
 
-  const [eligible, total, withdrawn, inactive] = await Promise.all([
-    prisma.contact.count({
-      where: {
-        organizationId: context.organization.id,
-        status: "ACTIVE",
-        consents: { some: { channel: "WHATSAPP", purpose: "MARKETING", status: "GRANTED" } },
-      },
-    }),
+  const [eligibleIds, total, withdrawn, inactive] = await Promise.all([
+    getEligibleWhatsAppMarketingContactIds(context.organization.id, 100000),
     prisma.contact.count({ where: { organizationId: context.organization.id } }),
     prisma.contact.count({
       where: {
