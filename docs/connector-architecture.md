@@ -70,4 +70,14 @@ A separate connector may provide production delivery only where the provider's t
 
 ## Current implementation status
 
-The QR adapter is a disabled contract scaffold only. It does not create QR sessions, implement WhatsApp Web, or send messages. The Meta Cloud API adapter is also a scaffold and is not in the active product scope. No live delivery is enabled.
+The QR runtime, encrypted session persistence, queue worker and receipt processing are implemented in code. They remain a separately deployed service and are not considered production-ready until legal/security review, provider authorization for the exact use case, deployment and live end-to-end verification are complete. The Meta Cloud API sending adapter remains disabled. A signed webhook endpoint is available for delivery-event reconciliation when a sender has been provisioned through an approved Meta integration.
+
+
+## Meta webhook event ingestion
+
+- Configure `META_APP_SECRET` and `META_WEBHOOK_VERIFY_TOKEN` as server-side secrets.
+- Configure the Meta webhook callback URL as `/api/webhooks/meta` and subscribe to message status events only after an approved Meta app and sender integration exist.
+- GET challenge verification uses constant-time token comparison; POST payloads require a valid `X-Hub-Signature-256` HMAC.
+- Events are persisted before application. Pending events are replayed when the provider message ID is stored, avoiding the early-webhook race.
+- Status progression is monotonic; duplicate and late lower-rank events do not regress terminal delivery state.
+- Inbound message payloads are not stored by this status-only handler.
