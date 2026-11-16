@@ -59,11 +59,18 @@ export async function POST(_request: Request, route: RouteContext) {
   if (sender.connector !== "QR_SESSION") return NextResponse.json({ error: "This sender does not use the QR session connector." }, { status: 400 });
 
   try {
-    const session = await getQrSessionManager().create({
-      organizationId: context.organization.id,
-      senderId: sender.id,
-      ownership: sender.ownership,
+    const existing = await prisma.qrSession.findFirst({
+      where: { organizationId: context.organization.id, senderId, activeKey: `${context.organization.id}:${senderId}` },
+      orderBy: { updatedAt: "desc" },
     });
+    const manager = getQrSessionManager();
+    const session = existing
+      ? await manager.refresh(context.organization.id, existing.id)
+      : await manager.create({
+          organizationId: context.organization.id,
+          senderId: sender.id,
+          ownership: sender.ownership,
+        });
     await prisma.$transaction([
       prisma.sender.updateMany({ where: { id: senderId, organizationId: context.organization.id }, data: { status: "PENDING" } }),
       prisma.auditLog.create({
