@@ -48,3 +48,12 @@ The database stores session metadata and a reference to encrypted credentials. I
 - Audit-log service
 - Database migration review and integration tests
 - Managed secret vault integration
+
+
+## QR runtime credentials
+
+- `QrCredential` stores the encrypted Baileys authentication credential object per runtime session.
+- `QrSignalKey` stores each Signal Protocol key separately, encrypted at rest with AES-256-GCM.
+- The encryption key is supplied only to the QR runtime through `QR_CREDENTIAL_ENCRYPTION_KEY`.
+- Pairing QR payloads are transient and are not persisted.
+- Deleting a credential cascades to its Signal key records; deleting a sender or organization also removes associated credentials.
