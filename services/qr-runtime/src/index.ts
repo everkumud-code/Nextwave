@@ -325,7 +325,7 @@ async function createSession(body: Record<string, unknown>) {
   const organizationId = typeof body.organizationId === "string" ? body.organizationId : "";
   const senderId = typeof body.senderId === "string" ? body.senderId : "";
   const ownership = body.ownership === "PLATFORM" ? "PLATFORM" : body.ownership === "CUSTOMER" ? "CUSTOMER" : null;
-  if (!organizationId || !senderId || !idempotencyKey || !lockToken || !/^\+[1-9]\d{7,14}$/.test(recipient) || !messageBody.trim() || messageBody.length > 4096) {
+  if (!organizationId || !senderId || !ownership) throw Object.assign(new Error("organizationId, senderId and ownership are required."), { statusCode: 400 });
 
   const sender = await prisma.sender.findFirst({
     where: { id: senderId, organizationId, archivedAt: null, connector: "QR_SESSION", ownership, organization: { status: "ACTIVE" } },
@@ -457,7 +457,7 @@ async function sendMessage(body: Record<string, unknown>) {
   const idempotencyKey = typeof body.idempotencyKey === "string" ? body.idempotencyKey : "";
   const lockToken = typeof body.lockToken === "string" ? body.lockToken : "";
 
-  if (!organizationId || !senderId || !idempotencyKey || !lockToken || !/^\\+[1-9]\\d{7,14}$/.test(recipient) || !messageBody.trim() || messageBody.length > 4096) {
+  if (!organizationId || !senderId || !idempotencyKey || !lockToken || !/^\+[1-9]\d{7,14}$/.test(recipient) || !messageBody.trim() || messageBody.length > 4096) {
     throw Object.assign(new Error("organizationId, senderId, E.164 recipient, message body, idempotencyKey and lockToken are required."), { statusCode: 400, errorCode: "INVALID_MESSAGE" });
   }
 
