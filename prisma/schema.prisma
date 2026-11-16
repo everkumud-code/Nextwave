@@ -106,6 +106,7 @@ model Organization {
   campaigns   Campaign[]
   sessions    QrSession[]
   qrCredentials QrCredential[]
+  deliveryReceipts QrDeliveryReceipt[]
   auditLogs   AuditLog[]
 }
 
@@ -158,6 +159,7 @@ model Sender {
   organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sessions           QrSession[]
   qrCredentials      QrCredential[]
+  deliveryReceipts   QrDeliveryReceipt[]
   campaigns          Campaign[]
   messages           Message[]
 
@@ -348,4 +350,26 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([resourceType, resourceId])
   @@index([actorUserId, createdAt])
+}
+
+
+enum QrDeliveryStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+model QrDeliveryReceipt {
+  id               String           @id @default(cuid())
+  organizationId   String
+  senderId         String
+  providerMessageId String
+  status           QrDeliveryStatus
+  receivedAt       DateTime         @default(now())
+  appliedAt        DateTime?
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender           Sender           @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, senderId, providerMessageId])
+  @@index([organizationId, senderId, appliedAt])
 }
