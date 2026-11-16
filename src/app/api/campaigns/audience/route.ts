@@ -12,14 +12,22 @@ export async function GET(request: Request) {
   const [eligibleIds, total, withdrawn, inactive] = await Promise.all([
     getEligibleWhatsAppMarketingContactIds(context.organization.id, 100000),
     prisma.contact.count({ where: { organizationId: context.organization.id } }),
-    prisma.contact.count({
-      where: { organizationId: context.organization.id, status: "UNSUBSCRIBED" },
-    }),
-    prisma.contact.count({
-      where: { organizationId: context.organization.id, status: { in: ["INVALID", "BLOCKED"] } },
-    }),
+    prisma.contact.count({ where: { organizationId: context.organization.id, status: "UNSUBSCRIBED" } }),
+    prisma.contact.count({ where: { organizationId: context.organization.id, status: { in: ["INVALID", "BLOCKED"] } } }),
   ]);
+
+  const includeContacts = new URL(request.url).searchParams.get("includeContacts") === "1";
+  const contacts = includeContacts && eligibleIds.length
+    ? await prisma.contact.findMany({
+        where: { organizationId: context.organization.id, id: { in: eligibleIds } },
+        select: { id: true, phoneNumberE164: true, firstName: true, lastName: true, email: true, company: true },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 5000,
+      })
+    : undefined;
+
   return NextResponse.json({
+    ...(contacts ? { contacts } : {}),
     eligible: eligibleIds.length,
     total,
     suppressed: total - eligibleIds.length,
