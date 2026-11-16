@@ -20,6 +20,7 @@ export class MetaCloudApiAdapter implements MessagingConnector {
 
   getCapabilities(): ConnectorCapabilities {
     return {
+      configured: false,
       supportsTemplates: true,
       supportsMedia: true,
       supportsInboundMessages: true,
