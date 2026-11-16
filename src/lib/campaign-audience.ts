@@ -17,7 +17,7 @@ export async function getEligibleWhatsAppMarketingContactIds(organizationId: str
       id: true,
       consents: {
         where: { channel: "WHATSAPP", purpose: "MARKETING" },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 1,
         select: { status: true },
       },
