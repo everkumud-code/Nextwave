@@ -7,8 +7,10 @@ import { claimQueuedMessages, markMessageSubmitted, retryOrFailMessage } from ".
 export type DispatchBatchResult = { claimed: number; submitted: number; retried: number; failed: number };
 
 export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResult> {
-  const jobs = await claimQueuedMessages(limit);
   const registry = createConnectorRegistry();
+  const hasConfiguredConnector = registry.list().some(item => registry.get(item.type).getCapabilities().configured);
+  if (!hasConfiguredConnector) return { claimed: 0, submitted: 0, retried: 0, failed: 0 };
+  const jobs = await claimQueuedMessages(limit);
   const result: DispatchBatchResult = { claimed: jobs.length, submitted: 0, retried: 0, failed: 0 };
 
   for (const job of jobs) {
