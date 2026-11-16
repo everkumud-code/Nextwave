@@ -118,6 +118,7 @@ model Organization {
   auditLogs   AuditLog[]
   creditAccount CreditAccount?
   creditTransactions CreditTransaction[]
+  invitations OrganizationInvite[]
 }
 
 model User {
@@ -468,4 +469,21 @@ model CreditTransaction {
   @@index([organizationId, createdAt])
   @@index([accountId, createdAt])
   @@index([reference])
+}
+
+
+model OrganizationInvite {
+  id              String       @id @default(cuid())
+  organizationId  String
+  email           String
+  role            MemberRole   @default(AGENT)
+  tokenHash       String       @unique
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  invitedByUserId String
+  createdAt       DateTime     @default(now())
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, email])
 }
