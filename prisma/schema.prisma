@@ -361,6 +361,7 @@ enum QrDeliveryStatus {
   SENT
   DELIVERED
   READ
+  FAILED
 }
 
 model QrDeliveryReceipt {
