@@ -48,14 +48,22 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] Campaign scheduling metadata with future-time validation (planning only; no dispatch)
 - [x] Message content editor, supported contact variables and personalisation preview
 - [x] Server-side draft readiness validation for sender, message, audience and current consent state
-- [x] Transactional campaign queue operation with current consent revalidation and idempotent per-recipient message creation\n- [x] Persistent PostgreSQL queue claiming using row locks and SKIP LOCKED leases\n- [x] Bounded exponential retry policy, lease recovery and per-message attempt limits\n- [x] Connector-aware dispatch orchestration with sender and latest-consent revalidation
+- [x] Transactional campaign queue operation with current consent revalidation and idempotent per-recipient message creation
+- [x] Persistent PostgreSQL queue claiming using row locks and SKIP LOCKED leases
+- [x] Bounded exponential retry policy, lease recovery and per-message attempt limits
+- [x] Connector-aware dispatch orchestration with sender and latest-consent revalidation
 - [x] Gated standalone queue worker runner and batch polling configuration
 - [x] Provider error retry classification and lease-token guarded state updates
 - [x] QR connector adapter wired to the self-hosted Baileys runtime send endpoint
 - [x] Runtime validates persisted queue job, tenant, sender, lease token and payload before sending
 - [ ] Deploy QR runtime and worker, then verify end-to-end provider delivery
-- [x] Baileys sent, delivered and read receipt reconciliation into message status\n- [x] Campaign completion aggregation after all jobs reach terminal delivery/failure states\n- [ ] Meta Cloud webhook reconciliation\n- [ ] Campaign approval and scheduled dispatch transition
-- [x] Durable queue records and organization-scoped idempotency keys\n- [ ] Queue and idempotency integration tests against PostgreSQL
+- [x] Baileys sent, delivered and read receipt reconciliation into message status
+- [x] Campaign completion aggregation after all jobs reach terminal delivery/failure states
+- [ ] Meta Cloud webhook reconciliation
+- [ ] Campaign approval and scheduled dispatch transition
+- [x] Durable queue records and organization-scoped idempotency keys
+- [x] Pure QR delivery receipt ordering and terminal-state transition tests
+- [ ] Queue and idempotency integration tests against PostgreSQL
 - [ ] Retry and dead-letter handling with provider-aware failure handling
 
 ## Milestone 5 — SaaS operations
