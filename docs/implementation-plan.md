@@ -71,7 +71,8 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 
 ## Milestone 5 — SaaS operations
 - [ ] Team inbox only for supported, authorized channels
-- [x] Workspace analytics overview with CRM/sender/campaign totals, message outcomes and 14-day trend\n- [ ] Detailed reports, exports and usage ledger
+- [x] Workspace analytics overview with CRM/sender/campaign totals, message outcomes and 14-day trend
+- [ ] Detailed reports, exports and usage ledger
 - [ ] Plans, subscriptions and billing
 - [ ] Super Admin and audit logs
 - [ ] Retention, deletion and incident-response workflows
