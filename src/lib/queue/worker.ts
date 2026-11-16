@@ -43,8 +43,8 @@ export async function claimQueuedMessages(limit = 25): Promise<ClaimedMessage[]>
           AND "attemptCount" < "maxAttempts"
           AND ("lockedAt" IS NULL OR "lockedAt" < NOW() - INTERVAL '5 minutes')
         ORDER BY "nextAttemptAt" ASC, "createdAt" ASC
-        FOR UPDATE SKIP LOCKED
         LIMIT ${safeLimit}
+        FOR UPDATE SKIP LOCKED
       )
       UPDATE "Message" AS message
       SET "lockedAt" = NOW(),
