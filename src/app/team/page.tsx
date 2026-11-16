@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ArrowLeft, Copy, UserPlus, RefreshCw } from "lucide-react";
 
@@ -13,7 +13,7 @@ export default function TeamPage(){
  const [busy,setBusy]=useState(true); const [saving,setSaving]=useState(false); const [error,setError]=useState(""); const [notice,setNotice]=useState("");
  async function load(){setBusy(true);setError("");try{const r=await fetch("/api/team",{cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.error||"Unable to load team.");setMembers(d.members||[]);setInvites(d.invitations||[]);}catch(e){setError(e instanceof Error?e.message:"Unable to load team.");}finally{setBusy(false);}}
  useEffect(()=>{void load();},[]);
- async function invite(e:React.FormEvent){e.preventDefault();setSaving(true);setError("");setNotice("");setInviteUrl("");try{const r=await fetch("/api/team",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,role})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Unable to create invitation.");setInviteUrl(d.inviteUrl);setNotice("Invitation link created. Share it with the team member; it expires in 7 days.");setEmail("");await load();}catch(e){setError(e instanceof Error?e.message:"Unable to invite member.");}finally{setSaving(false);}}
+ async function invite(e:FormEvent){e.preventDefault();setSaving(true);setError("");setNotice("");setInviteUrl("");try{const r=await fetch("/api/team",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,role})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Unable to create invitation.");setInviteUrl(d.inviteUrl);setNotice("Invitation link created. Share it with the team member; it expires in 7 days.");setEmail("");await load();}catch(e){setError(e instanceof Error?e.message:"Unable to invite member.");}finally{setSaving(false);}}
  async function copy(){if(!inviteUrl)return;try{await navigator.clipboard.writeText(inviteUrl);setNotice("Invitation link copied.");}catch{setError("Copy failed. Select and copy the invitation link manually.");}}
  return <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900 sm:px-8"><div className="mx-auto max-w-5xl"><Link href="/" className="inline-flex items-center gap-2 text-sm text-slate-500"><ArrowLeft size={16}/> Back to workspace</Link>
  <div className="mt-7"><p className="text-xs font-bold uppercase tracking-[.18em] text-emerald-700">Workspace access</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Team & members</h1><p className="mt-2 text-sm text-slate-500">Invite teammates with role-based access. Invite links are single-use and expire after 7 days.</p></div>
