@@ -108,6 +108,7 @@ model Organization {
   sessions    QrSession[]
   qrCredentials QrCredential[]
   deliveryReceipts QrDeliveryReceipt[]
+  providerDeliveryReceipts ProviderDeliveryReceipt[]
   auditLogs   AuditLog[]
 }
 
@@ -161,6 +162,7 @@ model Sender {
   sessions           QrSession[]
   qrCredentials      QrCredential[]
   deliveryReceipts   QrDeliveryReceipt[]
+  providerDeliveryReceipts ProviderDeliveryReceipt[]
   campaigns          Campaign[]
   messages           Message[]
 
@@ -401,4 +403,23 @@ model ContactGroupMember {
 
   @@unique([groupId, contactId])
   @@index([contactId])
+}
+
+
+model ProviderDeliveryReceipt {
+  id                String                 @id @default(cuid())
+  organizationId    String
+  senderId          String
+  providerMessageId String
+  status            QrDeliveryStatus
+  eventTimestamp    DateTime
+  errorCode         String?
+  errorMessage      String?
+  receivedAt        DateTime               @default(now())
+  appliedAt         DateTime?
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender            Sender                 @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, senderId, providerMessageId, status, eventTimestamp])
+  @@index([organizationId, senderId, providerMessageId, appliedAt])
 }
