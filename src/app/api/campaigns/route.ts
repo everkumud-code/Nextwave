@@ -59,6 +59,7 @@ export async function POST(request: Request) {
           organizationId: context.organization.id,
           name,
           description,
+          messageBody,
           senderId,
           status: "DRAFT",
           channel: "WHATSAPP",
