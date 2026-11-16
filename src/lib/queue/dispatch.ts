@@ -16,6 +16,27 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
   for (const job of jobs) {
     let recipientContactId: string | null = null;
     const fail = async (errorCode: string, errorMessage: string, retryable = isRetryableConnectorError(errorCode)) => {
+      const persisted = await prisma.message.findFirst({
+        where: { id: job.id, status: "QUEUED", lockToken: job.lockToken },
+        select: { providerMessageId: true },
+      });
+      if (persisted?.providerMessageId) {
+        const accepted = await markMessageSubmitted({
+          messageId: job.id,
+          lockToken: job.lockToken,
+          providerMessageId: persisted.providerMessageId,
+        });
+        if (accepted.count) {
+          if (job.campaignId && recipientContactId) {
+            await prisma.campaignRecipient.updateMany({
+              where: { campaignId: job.campaignId, contactId: recipientContactId, status: "QUEUED" },
+              data: { status: "SUBMITTED" },
+            });
+          }
+          result.submitted += 1;
+          return;
+        }
+      }
       const update = await retryOrFailMessage({
         messageId: job.id,
         lockToken: job.lockToken,
