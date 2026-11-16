@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { parseContactCsv } from "@/lib/contact-import";
+import { parseContactXlsx } from "@/lib/contact-xlsx";
 
 export const runtime = "nodejs";
 const MAX_CSV_BYTES = 2 * 1024 * 1024;
+const MAX_XLSX_BYTES = 5 * 1024 * 1024;
 
 export async function POST(request: Request) {
   const context = await getAuthContext();
@@ -12,10 +14,29 @@ export async function POST(request: Request) {
   if (!canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to import contacts." }, { status: 403 });
 
   try {
-    const body = await request.json();
-    if (typeof body.csv !== "string" || !body.csv.trim()) return NextResponse.json({ error: "Upload a CSV file." }, { status: 400 });
-    if (new TextEncoder().encode(body.csv).length > MAX_CSV_BYTES) return NextResponse.json({ error: "CSV file must be 2 MB or smaller." }, { status: 413 });
-    const rows = parseContactCsv(body.csv);
+    let rows;
+    let previewOnly = true;
+    const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.includes("multipart/form-data")) {
+      const form = await request.formData();
+      const file = form.get("file");
+      previewOnly = form.get("preview") !== "false";
+      if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") return NextResponse.json({ error: "Select a CSV or XLSX file." }, { status: 400 });
+      const name = file.name.toLowerCase();
+      if (name.endsWith(".xlsx")) {
+        if (file.size > MAX_XLSX_BYTES) return NextResponse.json({ error: "XLSX file must be 5 MB or smaller." }, { status: 413 });
+        rows = parseContactXlsx(Buffer.from(await file.arrayBuffer()));
+      } else if (name.endsWith(".csv")) {
+        if (file.size > MAX_CSV_BYTES) return NextResponse.json({ error: "CSV file must be 2 MB or smaller." }, { status: 413 });
+        rows = parseContactCsv(await file.text());
+      } else return NextResponse.json({ error: "Only .csv and .xlsx files are supported." }, { status: 400 });
+    } else {
+      const body = await request.json();
+      if (typeof body.csv !== "string" || !body.csv.trim()) return NextResponse.json({ error: "Upload a CSV or XLSX file." }, { status: 400 });
+      if (new TextEncoder().encode(body.csv).length > MAX_CSV_BYTES) return NextResponse.json({ error: "CSV file must be 2 MB or smaller." }, { status: 413 });
+      previewOnly = body.preview !== false;
+      rows = parseContactCsv(body.csv);
+    }
     const candidates = rows.filter(row => row.phoneNumberE164 && row.errors.length === 0);
     const existing = await prisma.contact.findMany({
       where: { organizationId: context.organization.id, phoneNumberE164: { in: candidates.map(row => row.phoneNumberE164!) } },
@@ -27,7 +48,7 @@ export async function POST(request: Request) {
       errors: [...row.errors, ...(row.phoneNumberE164 && existingNumbers.has(row.phoneNumberE164) ? ["Already exists in this workspace"] : [])],
     }));
     const valid = preview.filter(row => row.errors.length === 0);
-    if (body.preview !== false) {
+    if (previewOnly) {
       return NextResponse.json({
         preview: preview.slice(0, 100),
         totalRows: preview.length,
