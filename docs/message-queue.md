@@ -41,7 +41,7 @@ counts and a paginated recent message list.
 
 ## Not yet enabled
 
-The dispatch orchestration and runner are implemented, but there is not yet a live connector that can send. The current Meta Cloud and QR adapters report `configured: false`; the runner deliberately refuses to start while all adapters are disabled. Queueing creates durable jobs; it does not send messages. Delivery webhooks, campaign completion reconciliation and scheduled dispatch remain separate milestones.
+The QR adapter now sends through the self-hosted Baileys runtime at `POST /v1/messages` when `QR_SESSION_SERVICE_URL` and `QR_SESSION_SERVICE_TOKEN` are configured. The Meta Cloud adapter remains a scaffold and reports `configured: false`. The queue runner refuses to start if no registered connector is configured. End-to-end delivery still requires deployment and live sender verification. Delivery receipt webhooks, campaign completion reconciliation and scheduled dispatch remain separate milestones.
 
 ## Database migration
 
