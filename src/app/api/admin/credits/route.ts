@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
-import { getAuthContext } from "@/lib/auth";
+import { getAuthContext, isPlatformAdminUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-async function isPlatformAdmin(userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { isPlatformAdmin: true } });
-  return user?.isPlatformAdmin === true;
-}
 
 export async function GET() {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  if (!(await isPlatformAdmin(context.user.id))) return NextResponse.json({ error: "Platform admin access required." }, { status: 403 });
+  if (!isPlatformAdminUser(context.user)) return NextResponse.json({ error: "Platform admin access required." }, { status: 403 });
 
   const organizations = await prisma.organization.findMany({
     orderBy: { createdAt: "desc" },
