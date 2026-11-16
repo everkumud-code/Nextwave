@@ -96,22 +96,6 @@ function isAuthorized(request: IncomingMessage) {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-async function ensureCredential(sessionId: string, organizationId: string, senderId: string) {
-  let credential = await prisma.qrCredential.findUnique({ where: { id: sessionId } });
-  if (!credential) {
-    const creds = initAuthCreds();
-    credential = await prisma.qrCredential.create({
-      data: {
-        id: sessionId,
-        organizationId,
-        senderId,
-        encryptedCreds: encrypt(serialize(creds)),
-      },
-    });
-  }
-  return credential;
-}
-
 async function createAuthState(credentialId: string) {
   const credential = await prisma.qrCredential.findUnique({ where: { id: credentialId } });
   if (!credential) throw new Error("QR credential record is missing.");
