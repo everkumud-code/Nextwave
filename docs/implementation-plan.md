@@ -44,7 +44,7 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] Consent-aware campaign audience selection using latest WhatsApp marketing consent state
 - [x] Campaign draft creation with tenant-scoped sender assignment and recipient snapshot
 - [x] Campaign Manager UI with audience/suppression metrics and draft inventory
-- [x] Campaign draft editor with editable recipient selection and connected sender assignment\n- [x] Campaign scheduling metadata with future-time validation (planning only; no dispatch)\n- [x] Message content editor, supported contact variables and personalisation preview\n- [ ] Campaign approval, final validation and scheduling/dispatch transition
+- [x] Campaign draft editor with editable recipient selection and connected sender assignment\n- [x] Campaign scheduling metadata with future-time validation (planning only; no dispatch)\n- [x] Message content editor, supported contact variables and personalisation preview\n- [x] Server-side draft readiness validation for sender, message, audience and current consent state\n- [ ] Campaign approval, final validation and scheduling/dispatch transition
 - [ ] Queue and idempotency for configured connector capabilities
 - [ ] Retry and dead-letter handling with provider-aware failure handling
 
