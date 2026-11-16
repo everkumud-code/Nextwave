@@ -468,13 +468,13 @@ async function persistDeliveryUpdate(providerMessageId: string, status: "SENT" |
   });
   if (!message) return;
 
-  const previousStatuses = status === "SENT"
+  const previousStatuses: Array<"QUEUED" | "SUBMITTED" | "SENT" | "DELIVERED"> = status === "SENT"
     ? ["QUEUED", "SUBMITTED"]
     : status === "DELIVERED"
       ? ["QUEUED", "SUBMITTED", "SENT"]
       : ["QUEUED", "SUBMITTED", "SENT", "DELIVERED"];
   const updated = await prisma.message.updateMany({
-    where: { id: message.id, status: { in: previousStatuses as never[] } },
+    where: { id: message.id, status: { in: previousStatuses } },
     data: {
       status,
       deliveredAt: status === "DELIVERED" || status === "READ" ? new Date() : undefined,
