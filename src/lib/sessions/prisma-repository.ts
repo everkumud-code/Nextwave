@@ -59,7 +59,7 @@ export class PrismaQrSessionRepository implements QrSessionRepository {
 
   async findBySender(organizationId: string, senderId: string): Promise<QrSession | null> {
     const record = await this.db.qrSession.findFirst({
-      where: { organizationId, senderId, status: { notIn: ["DISCONNECTED", "REVOKED", "ERROR"] } },
+      where: { organizationId, senderId, activeKey: `${organizationId}:${senderId}` },
       orderBy: { updatedAt: "desc" },
     });
     return record ? fromDb(record) : null;
