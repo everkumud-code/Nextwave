@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { renderMessageTemplate } from "@/lib/message-template";
 import { ArrowLeft, CalendarClock, Check, Loader2, RefreshCw, Save, Users } from "lucide-react";
 
 type Contact = { id: string; phoneNumberE164: string; firstName: string | null; lastName: string | null; email: string | null; company: string | null };
 type Sender = { id: string; displayName: string; phoneNumberE164: string; status: string };
-type Campaign = { id: string; name: string; description: string | null; status: string; scheduledAt: string | null; sender: Sender | null; recipients: { contact: { id: string } }[]; _count: { recipients: number; messages: number } };
+type Campaign = { id: string; name: string; description: string | null; messageBody: string | null; status: string; scheduledAt: string | null; sender: Sender | null; recipients: { contact: { id: string } }[]; _count: { recipients: number; messages: number } };
 async function readJson(response: Response) { const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Something went wrong."); return data; }
 const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
 function localDateTime(value: string | null) {
@@ -24,7 +25,7 @@ export default function CampaignDetailPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [senders, setSenders] = useState<Sender[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
-  const [form, setForm] = useState({ name: "", description: "", senderId: "", scheduledAt: "" });
+  const [form, setForm] = useState({ name: "", description: "", messageBody: "", senderId: "", scheduledAt: "" });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -44,7 +45,7 @@ export default function CampaignDetailPage() {
       setContacts((audienceData.contacts ?? []).slice(0, 5000));
       setSenders(senderData.senders.filter((sender: Sender) => sender.status === "CONNECTED"));
       setSelected(item.recipients.map(row => row.contact.id));
-      setForm({ name: item.name, description: item.description ?? "", senderId: item.sender?.id ?? "", scheduledAt: localDateTime(item.scheduledAt) });
+      setForm({ name: item.name, description: item.description ?? "", messageBody: item.messageBody ?? "", senderId: item.sender?.id ?? "", scheduledAt: localDateTime(item.scheduledAt) });
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to load campaign."); }
     finally { setLoading(false); }
   }, [campaignId]);
@@ -57,7 +58,7 @@ export default function CampaignDetailPage() {
       const data = await readJson(await fetch(`/api/campaigns/${campaignId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name, description: form.description, senderId: form.senderId || null,
+          name: form.name, description: form.description, messageBody: form.messageBody, senderId: form.senderId || null,
           scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : null,
           recipientContactIds: selected,
         }),
@@ -92,6 +93,8 @@ export default function CampaignDetailPage() {
             <h3 className="font-semibold text-slate-900">Campaign settings</h3>
             <label className="block text-xs font-semibold text-slate-700">Campaign name<input disabled={!editable} maxLength={120} value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className={field+" mt-1.5"}/></label>
             <label className="block text-xs font-semibold text-slate-700">Description<textarea disabled={!editable} maxLength={1000} rows={4} value={form.description} onChange={e=>setForm({...form,description:e.target.value})} className={field+" mt-1.5"}/></label>
+            <label className="block text-xs font-semibold text-slate-700">Message content<textarea disabled={!editable} maxLength={4096} rows={7} value={form.messageBody} onChange={e=>setForm({...form,messageBody:e.target.value})} placeholder="Hello {{firstName}}, we have an update for you…" className={field+" mt-1.5"}/><span className="mt-1 block text-[11px] font-normal text-slate-400">Up to 4,096 characters. Variables: {{firstName}}, {{lastName}}, {{company}}, {{phoneNumber}}.</span></label>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Personalisation preview</p><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-700">{renderMessageTemplate(form.messageBody || "Hello {{firstName}}, welcome to {{company}}.", contacts.find(contact=>selected.includes(contact.id)) ?? {})}</p><p className="mt-2 text-[10px] text-slate-400">Preview uses the first selected eligible contact.</p></div>
             <label className="block text-xs font-semibold text-slate-700">Connected sender<select disabled={!editable} value={form.senderId} onChange={e=>setForm({...form,senderId:e.target.value})} className={field+" mt-1.5"}><option value="">Assign later</option>{senders.map(sender=><option key={sender.id} value={sender.id}>{sender.displayName} · {sender.phoneNumberE164}</option>)}</select></label>
             <label className="block text-xs font-semibold text-slate-700"><span className="inline-flex items-center gap-2"><CalendarClock size={14}/> Planned send time</span><input disabled={!editable} type="datetime-local" value={form.scheduledAt} onChange={e=>setForm({...form,scheduledAt:e.target.value})} className={field+" mt-1.5"}/><span className="mt-1 block text-[11px] font-normal text-slate-400">Planning metadata only. Scheduling does not dispatch messages.</span></label>
             <div className="rounded-xl bg-emerald-50 p-4"><p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Selected audience</p><p className="mt-1 text-2xl font-semibold text-emerald-950">{selected.length}</p><p className="mt-1 text-[11px] text-emerald-800">Only active contacts with current WhatsApp marketing consent are selectable.</p></div>
