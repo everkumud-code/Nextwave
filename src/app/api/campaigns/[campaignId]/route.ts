@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
 
 export const runtime = "nodejs";
 type RouteContext = { params: Promise<{ campaignId: string }> };
@@ -13,7 +14,7 @@ export async function GET(_request: Request, route: RouteContext) {
     where: { id: campaignId, organizationId: context.organization.id },
     select: {
       id: true, name: true, description: true, status: true, channel: true,
-      createdAt: true, updatedAt: true,
+      scheduledAt: true, createdAt: true, updatedAt: true,
       sender: { select: { id: true, displayName: true, phoneNumberE164: true, status: true } },
       recipients: {
         orderBy: { createdAt: "asc" },
@@ -44,7 +45,9 @@ export async function PATCH(request: Request, route: RouteContext) {
 
   try {
     const body = await request.json();
-    const data: { name?: string; description?: string | null; senderId?: string | null; scheduledAt?: Date | null } = {};\n    let recipientContactIds: string[] | undefined;
+    const data: { name?: string; description?: string | null; senderId?: string | null; scheduledAt?: Date | null } = {};
+    let recipientContactIds: string[] | undefined;
+
     if (body.name !== undefined) {
       if (typeof body.name !== "string" || !body.name.trim()) return NextResponse.json({ error: "Campaign name is required." }, { status: 400 });
       data.name = body.name.trim().slice(0, 120);
@@ -84,12 +87,21 @@ export async function PATCH(request: Request, route: RouteContext) {
         return NextResponse.json({ error: "Selected recipients must be active contacts with current WhatsApp marketing consent." }, { status: 400 });
       }
     }
+
     const campaign = await prisma.$transaction(async tx => {
       const updated = await tx.campaign.update({
         where: { id: existing.id },
         data,
         select: { id: true, name: true, description: true, status: true, senderId: true, scheduledAt: true, updatedAt: true, _count: { select: { recipients: true } } },
       });
+      if (recipientContactIds !== undefined) {
+        await tx.campaignRecipient.deleteMany({ where: { campaignId: existing.id } });
+        if (recipientContactIds.length) {
+          await tx.campaignRecipient.createMany({
+            data: recipientContactIds.map(contactId => ({ campaignId: existing.id, contactId, status: "PENDING" })),
+          });
+        }
+      }
       await tx.auditLog.create({
         data: {
           organizationId: context.organization.id,
@@ -97,7 +109,10 @@ export async function PATCH(request: Request, route: RouteContext) {
           action: "campaign.updated",
           resourceType: "Campaign",
           resourceId: existing.id,
-          metadata: { fields: [...Object.keys(data), ...(recipientContactIds !== undefined ? ["recipientContactIds"] : [])], recipientCount: recipientContactIds?.length },
+          metadata: {
+            fields: [...Object.keys(data), ...(recipientContactIds !== undefined ? ["recipientContactIds"] : [])],
+            recipientCount: recipientContactIds?.length,
+          },
         },
       });
       return updated;
