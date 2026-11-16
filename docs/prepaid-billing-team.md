@@ -36,3 +36,13 @@
 - Sending is not unlimited. Delivery must follow the connected provider's approved throughput, opt-in/consent, template and quality requirements.
 - Automatic interval rotation intended to evade platform detection or enforcement is not implemented.
 - Meta Cloud API outbound sending still requires a configured and enabled authorized adapter; webhook receipt ingestion alone does not enable outbound sending.
+
+
+## Delegated platform-admin operations
+- `GET /api/admin/workspaces` lists active client workspaces, senders and account-level totals; platform-admin access is required.
+- Platform admins can create and list campaigns for a selected workspace using `/api/campaigns?organizationId=...` and `POST /api/campaigns` with an `organizationId`.
+- Platform admins can queue a draft campaign for that workspace by passing `organizationId` to the campaign queue endpoint. The same opt-in, connected-sender, 5,000-recipient, wallet-balance and idempotency checks remain in force.
+- Platform admins can upload CSV/XLSX contacts into a selected workspace using the existing import preview/commit flow with `organizationId`. Consent is only recorded when the import row explicitly supplies the consent field.
+- Platform admins can download client contact files and filtered message reports with the `organizationId` query parameter.
+- Admin-operated imports and campaign creation/queueing are audited against the client workspace and identify the acting platform admin.
+- UI: `/admin/operations`. This does not impersonate a client login; it uses a dedicated platform-admin permission check.
