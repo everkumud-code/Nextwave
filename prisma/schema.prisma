@@ -266,6 +266,7 @@ model Campaign {
   senderId        String?
   name            String
   description     String?
+  messageBody     String?
   status          CampaignStatus @default(DRAFT)
   channel         String         @default("WHATSAPP")
   scheduledAt     DateTime?
