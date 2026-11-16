@@ -320,6 +320,7 @@ model Message {
   body              String?
   status            MessageStatus @default(QUEUED)
   idempotencyKey    String
+  chargePaise       Int           @default(0)
   providerMessageId String?
   attemptCount      Int           @default(0)
   maxAttempts       Int           @default(5)
