@@ -174,6 +174,7 @@ test("scheduled campaigns are atomically converted into queued recipient jobs", 
     const recipient = await prisma.campaignRecipient.findFirstOrThrow({ where: { campaignId: campaign.id, contactId: contact.id } });
     assert.equal(recipient.status, "QUEUED");
   } finally {
+    await prisma.message.deleteMany({ where: { organizationId: organization.id } });
     await prisma.organization.delete({ where: { id: organization.id } });
   }
 });
