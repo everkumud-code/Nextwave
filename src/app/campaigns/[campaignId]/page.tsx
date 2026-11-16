@@ -9,6 +9,7 @@ import { ArrowLeft, CalendarClock, Check, Loader2, RefreshCw, Save, Send, Users 
 type Contact = { id: string; phoneNumberE164: string; firstName: string | null; lastName: string | null; email: string | null; company: string | null };
 type Sender = { id: string; displayName: string; phoneNumberE164: string; status: string };
 type Validation = { ready: boolean; issues: string[]; checks: { hasMessage: boolean; senderConnected: boolean; selectedRecipients: number; currentlyEligibleRecipients: number; suppressedRecipients: number } };
+type MessageStats = { total: number; queued: number; submitted: number; sent: number; delivered: number; read: number; failed: number; cancelled: number };
 type Campaign = { id: string; name: string; description: string | null; messageBody: string | null; status: string; scheduledAt: string | null; sender: Sender | null; recipients: { contact: { id: string } }[]; _count: { recipients: number; messages: number } };
 async function readJson(response: Response) { const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Something went wrong."); return data; }
 const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
@@ -23,6 +24,7 @@ export default function CampaignDetailPage() {
   const params = useParams<{ campaignId: string }>();
   const campaignId = params.campaignId;
   const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [messageStats, setMessageStats] = useState<MessageStats | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [senders, setSenders] = useState<Sender[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -45,6 +47,8 @@ export default function CampaignDetailPage() {
         readJson(await fetch("/api/senders", { cache: "no-store" })),
       ]);
       const item = campaignData.campaign as Campaign;
+      const statsData = item.status !== "DRAFT" ? await readJson(await fetch(`/api/campaigns/${campaignId}/messages`, { cache: "no-store" })) : null;
+      setMessageStats(statsData?.counts ?? null);
       setCampaign(item);
       setContacts((audienceData.contacts ?? []).slice(0, 5000));
       setSenders(senderData.senders.filter((sender: Sender) => sender.status === "CONNECTED"));
@@ -114,6 +118,8 @@ export default function CampaignDetailPage() {
       {!campaign ? <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">Campaign not found.</div> : <>
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm text-slate-500">Draft configuration and consent-filtered recipient snapshot</p><h2 className="mt-1 text-2xl font-semibold text-slate-900">{campaign.name}</h2></div><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">{campaign.status}</span></div>
         {!editable && <p className="mb-4 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">Only draft campaigns can be edited.</p>}
+        {campaign.status !== "DRAFT" && messageStats && <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-semibold text-slate-900">Message queue</h3><p className="mt-1 text-xs text-slate-500">Persistent jobs · delivery depends on an enabled dispatch worker</p></div><span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">{messageStats.total} jobs</span></div><div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-semibold uppercase text-slate-400">Queued</p><p className="mt-1 text-xl font-semibold text-slate-900">{messageStats.queued}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-semibold uppercase text-slate-400">Submitted</p><p className="mt-1 text-xl font-semibold text-slate-900">{messageStats.submitted}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-semibold uppercase text-slate-400">Delivered</p><p className="mt-1 text-xl font-semibold text-slate-900">{messageStats.delivered}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-semibold uppercase text-slate-400">Failed</p><p className="mt-1 text-xl font-semibold text-slate-900">{messageStats.failed}</p></div></div></section>}
+
         <div className="grid gap-5 lg:grid-cols-[.85fr_1.15fr]">
           <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
             <h3 className="font-semibold text-slate-900">Campaign settings</h3>
