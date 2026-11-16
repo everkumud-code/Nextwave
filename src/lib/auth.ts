@@ -13,6 +13,11 @@ function getSecret() {
 
 export function assertAuthConfigured() { getSecret(); }
 
+export function isPlatformAdminUser(user: { isPlatformAdmin?: boolean; email?: string }) {
+  const configured = (process.env.PLATFORM_ADMIN_EMAILS ?? "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
+  return user.isPlatformAdmin === true || (!!user.email && configured.includes(user.email.toLowerCase()));
+}
+
 export async function createSession(userId: string) {
   const token = await new SignJWT({ userId })
     .setProtectedHeader({ alg: "HS256" })
@@ -60,13 +65,13 @@ export async function getAuthContext() {
       orderBy: { createdAt: "asc" },
       include: {
         organization: { select: { id: true, name: true, slug: true, timezone: true } },
-        user: { select: { id: true, email: true, name: true, image: true } },
+        user: { select: { id: true, email: true, name: true, image: true, isPlatformAdmin: true } },
       },
     });
     if (!membership) return null;
 
     return {
-      user: membership.user,
+      user: { ...membership.user, isPlatformAdmin: isPlatformAdminUser(membership.user) },
       organization: membership.organization,
       role: membership.role,
     };
