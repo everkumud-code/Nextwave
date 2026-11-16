@@ -26,6 +26,8 @@ The user has rejected WhatsApp Cloud API for the current scope. Keep its scaffol
 - [x] Self-hosted QR session lifecycle contracts and manager
 - [x] PostgreSQL-backed QR session repository
 - [x] Internal QR session service HTTP adapter and API contract
+- [x] Authenticated sender QR session API (start, status refresh, revoke)
+- [x] Live QR pairing panel with QR rendering, expiry and connection polling
 - [ ] Self-hosted QR runtime implementation and integration tests
 - [ ] Feature flag and server-side enforcement that keeps QR lab disabled
 - [ ] No QR-based campaign dispatch
