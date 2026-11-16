@@ -38,7 +38,7 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] Contact Manager UI with search and status visibility
 - [x] Append-only consent event API with source, purpose, timestamp, notice version, evidence reference and withdrawal
 - [x] Contact consent controls with audit events and unsubscribe/re-consent state updates
-- [ ] CSV/XLSX import, field mapping, batch validation and import preview
+- [x] CSV import with header aliases, quoted-field parsing, 5,000-row validation and preview\n- [x] Tenant-scoped duplicate detection, row-level errors, explicit consent import and per-contact audit events\n- [ ] XLSX import and configurable field mapping
 - [ ] Consent-aware campaign audience suppression enforcement
 - [ ] Campaign builder, audience preview and scheduling metadata
 - [ ] Queue and idempotency for configured connector capabilities
