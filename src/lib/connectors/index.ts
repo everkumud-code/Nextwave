@@ -6,7 +6,7 @@ export function createConnectorRegistry(): ConnectorRegistry {
   const registry = new ConnectorRegistry();
   registry.register(new MetaCloudApiAdapter());
 
-  // Registered for capability discovery, but all QR operations remain disabled.
+  // QR operations are enabled when the separately deployed runtime URL and token are configured.
   registry.register(new ExperimentalQrProviderAdapter());
 
   return registry;
