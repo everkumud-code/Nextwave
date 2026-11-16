@@ -40,7 +40,7 @@ export async function GET(_request: Request, route: RouteContext) {
 
   try {
     const session = await getQrSessionManager().refresh(context.organization.id, current.id);
-    const senderStatus = session.status === "CONNECTED" ? "CONNECTED" : ["ERROR", "REVOKED", "DISCONNECTED"].includes(session.status) ? "DISCONNECTED" : "PENDING";
+    const senderStatus = session.status === "CONNECTED" ? "CONNECTED" : session.status === "RECONNECTING" ? "ATTENTION" : ["ERROR", "REVOKED", "DISCONNECTED"].includes(session.status) ? "DISCONNECTED" : "PENDING";
     await prisma.sender.updateMany({
       where: { id: senderId, organizationId: context.organization.id },
       data: { status: senderStatus, lastConnectedAt: session.connectedAt ? new Date(session.connectedAt) : undefined, lastSeenAt: session.lastSeenAt ? new Date(session.lastSeenAt) : undefined },
