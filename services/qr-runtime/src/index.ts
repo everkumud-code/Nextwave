@@ -325,7 +325,7 @@ async function createSession(body: Record<string, unknown>) {
   const organizationId = typeof body.organizationId === "string" ? body.organizationId : "";
   const senderId = typeof body.senderId === "string" ? body.senderId : "";
   const ownership = body.ownership === "PLATFORM" ? "PLATFORM" : body.ownership === "CUSTOMER" ? "CUSTOMER" : null;
-  if (!organizationId || !senderId || !ownership) throw Object.assign(new Error("organizationId, senderId and ownership are required."), { statusCode: 400 });
+  if (!organizationId || !senderId || !idempotencyKey || !lockToken || !/^\+[1-9]\d{7,14}$/.test(recipient) || !messageBody.trim() || messageBody.length > 4096) {
 
   const sender = await prisma.sender.findFirst({
     where: { id: senderId, organizationId, archivedAt: null, connector: "QR_SESSION", ownership, organization: { status: "ACTIVE" } },
@@ -510,7 +510,12 @@ async function handler(request: IncomingMessage, response: ServerResponse) {
   if (!isAuthorized(request)) return send(response, 401, { error: "Unauthorized." });
 
   try {
-    if (url.pathname === "/v1/messages" && request.method === "POST") {\n      const result = await sendMessage(await readBody(request));\n      return send(response, 200, result);\n    }\n\n    if (url.pathname === "/v1/sessions" && request.method === "POST") {
+    if (url.pathname === "/v1/messages" && request.method === "POST") {
+      const result = await sendMessage(await readBody(request));
+      return send(response, 200, result);
+    }
+
+    if (url.pathname === "/v1/sessions" && request.method === "POST") {
       const result = await createSession(await readBody(request));
       return send(response, 201, result);
     }
