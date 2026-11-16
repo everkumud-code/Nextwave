@@ -30,7 +30,7 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] Bounded reconnect handling and liveness/readiness endpoints
 - [ ] Runtime integration tests
 - [x] Sender status reconciliation from runtime lifecycle events
-- [ ] Campaign queue and dispatch adapter using configured connector capabilities
+- [x] Campaign queue and dispatch adapter using configured connector capabilities
 
 ## Milestone 4 — CRM and campaign planning
 - [x] Tenant-scoped contact list and manual contact creation API
