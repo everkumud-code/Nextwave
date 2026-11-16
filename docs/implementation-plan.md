@@ -33,9 +33,13 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [ ] Campaign queue and dispatch adapter using configured connector capabilities
 
 ## Milestone 4 — CRM and campaign planning
-- [ ] Contact import, mapping, deduplication and validation
-- [ ] Consent ledger: source, purpose, timestamp, notice version and withdrawal
-- [ ] Suppression and opt-out enforcement
+- [x] Tenant-scoped contact list and manual contact creation API
+- [x] Indian mobile and international E.164 normalization with workspace duplicate protection
+- [x] Contact Manager UI with search and status visibility
+- [x] Append-only consent event API with source, purpose, timestamp, notice version, evidence reference and withdrawal
+- [x] Contact consent controls with audit events and unsubscribe/re-consent state updates
+- [ ] CSV/XLSX import, field mapping, batch validation and import preview
+- [ ] Consent-aware campaign audience suppression enforcement
 - [ ] Campaign builder, audience preview and scheduling metadata
 - [ ] Queue and idempotency for configured connector capabilities
 - [ ] Retry and dead-letter handling with provider-aware failure handling
