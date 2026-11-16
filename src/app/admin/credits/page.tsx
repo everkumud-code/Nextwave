@@ -10,7 +10,7 @@ const rupees = (p: number) => new Intl.NumberFormat("en-IN", { style: "currency"
 export default function AdminCreditsPage() {
   const [clients,setClients]=useState<Client[]>([]);
   const [selected,setSelected]=useState("");
-  const [amount,setAmount]=useState("10000");
+  const [amount,setAmount]=useState("0");
   const [rate,setRate]=useState("10");
   const [description,setDescription]=useState("");
   const [busy,setBusy]=useState(true);
