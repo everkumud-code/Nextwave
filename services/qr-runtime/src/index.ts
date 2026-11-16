@@ -124,7 +124,7 @@ async function createAuthState(credentialId: string) {
             await prisma.qrSignalKey.upsert({
               where: { credentialId_keyType_keyId: { credentialId, keyType, keyId } },
               create: { credentialId, keyType, keyId, encryptedValue: encrypt(serialize(value), `${credentialContext}:${keyType}:${keyId}`) },
-              update: { encryptedValue: encrypt(serialize(value), `${credentialId}:${keyType}:${keyId}`) },
+              update: { encryptedValue: encrypt(serialize(value), `${credentialContext}:${keyType}:${keyId}`) },
             });
           }
         }
