@@ -100,7 +100,7 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ imported, skipped: preview.length - imported, message: `${imported} contacts imported successfully.` });
   } catch (error) {
-    if (error instanceof Error && (error.message.startsWith("CSV") || error.message.startsWith("XLSX") || error.message.startsWith("The XLSX") || error.message.includes("column is required") || error.message.includes("limited to"))) {
+    if (error instanceof Error && (error.message.startsWith("CSV") || error.message.includes("XLSX") || error.message.includes("column is required") || error.message.includes("limited to"))) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     console.error("Contact file import failed", error);
