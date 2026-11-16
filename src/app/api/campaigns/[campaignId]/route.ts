@@ -44,7 +44,7 @@ export async function PATCH(request: Request, route: RouteContext) {
 
   try {
     const body = await request.json();
-    const data: { name?: string; description?: string | null; senderId?: string | null } = {};
+    const data: { name?: string; description?: string | null; senderId?: string | null; scheduledAt?: Date | null } = {};\n    let recipientContactIds: string[] | undefined;
     if (body.name !== undefined) {
       if (typeof body.name !== "string" || !body.name.trim()) return NextResponse.json({ error: "Campaign name is required." }, { status: 400 });
       data.name = body.name.trim().slice(0, 120);
@@ -64,11 +64,31 @@ export async function PATCH(request: Request, route: RouteContext) {
         data.senderId = sender.id;
       } else return NextResponse.json({ error: "Invalid sender." }, { status: 400 });
     }
+    if (body.scheduledAt !== undefined) {
+      if (body.scheduledAt === null || body.scheduledAt === "") data.scheduledAt = null;
+      else if (typeof body.scheduledAt === "string") {
+        const scheduledAt = new Date(body.scheduledAt);
+        if (Number.isNaN(scheduledAt.getTime())) return NextResponse.json({ error: "Enter a valid schedule date and time." }, { status: 400 });
+        if (scheduledAt.getTime() <= Date.now()) return NextResponse.json({ error: "Schedule time must be in the future." }, { status: 400 });
+        data.scheduledAt = scheduledAt;
+      } else return NextResponse.json({ error: "Invalid schedule date and time." }, { status: 400 });
+    }
+    if (body.recipientContactIds !== undefined) {
+      if (!Array.isArray(body.recipientContactIds) || body.recipientContactIds.length > 5000 || body.recipientContactIds.some((id: unknown) => typeof id !== "string")) {
+        return NextResponse.json({ error: "Recipient selection must contain up to 5,000 contact IDs." }, { status: 400 });
+      }
+      recipientContactIds = [...new Set(body.recipientContactIds as string[])];
+      const eligibleIds = await getEligibleWhatsAppMarketingContactIds(context.organization.id, 100000);
+      const eligible = new Set(eligibleIds);
+      if (recipientContactIds.some(id => !eligible.has(id))) {
+        return NextResponse.json({ error: "Selected recipients must be active contacts with current WhatsApp marketing consent." }, { status: 400 });
+      }
+    }
     const campaign = await prisma.$transaction(async tx => {
       const updated = await tx.campaign.update({
         where: { id: existing.id },
         data,
-        select: { id: true, name: true, description: true, status: true, senderId: true, updatedAt: true },
+        select: { id: true, name: true, description: true, status: true, senderId: true, scheduledAt: true, updatedAt: true, _count: { select: { recipients: true } } },
       });
       await tx.auditLog.create({
         data: {
@@ -77,7 +97,7 @@ export async function PATCH(request: Request, route: RouteContext) {
           action: "campaign.updated",
           resourceType: "Campaign",
           resourceId: existing.id,
-          metadata: { fields: Object.keys(data) },
+          metadata: { fields: [...Object.keys(data), ...(recipientContactIds !== undefined ? ["recipientContactIds"] : [])], recipientCount: recipientContactIds?.length },
         },
       });
       return updated;
