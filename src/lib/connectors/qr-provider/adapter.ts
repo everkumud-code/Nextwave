@@ -17,11 +17,12 @@ import type {
  * reviewed for account authorisation, security, terms and data processing.
  */
 export class ExperimentalQrProviderAdapter implements MessagingConnector {
-  readonly type = "QR_PROVIDER_EXPERIMENTAL" as const;
+  readonly type = "QR_SESSION" as const;
   readonly displayName = "QR provider (experimental)";
 
   getCapabilities(): ConnectorCapabilities {
     return {
+      configured: false,
       supportsTemplates: false,
       supportsMedia: false,
       supportsInboundMessages: false,
