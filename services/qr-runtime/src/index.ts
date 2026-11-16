@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { randomBytes, createCipheriv, createDecipheriv, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, createCipheriv, createDecipheriv, timingSafeEqual } from "node:crypto";
 import makeWASocket, {
   Browsers,
   BufferJSON,
@@ -349,7 +349,7 @@ async function createSession(body: Record<string, unknown>) {
   const existing = [...sessions.values()].find((item) => item.organizationId === organizationId && item.senderId === senderId && !["DISCONNECTED", "REVOKED", "ERROR"].includes(item.status));
   if (existing) throw Object.assign(new Error("An active session already exists for this sender."), { statusCode: 409 });
 
-  const id = crypto.randomUUID();
+  const id = randomUUID();
   const creds = initAuthCreds();
   await prisma.qrCredential.create({
     data: { id, organizationId, senderId, encryptedCreds: encrypt(serialize(creds)) },
@@ -402,7 +402,7 @@ async function getSession(id: string, organizationId: string) {
     expiresAt: qrIsValid ? session.expiresAt : undefined,
     connectedAt: session.connectedAt,
     lastSeenAt: session.lastSeenAt,
-    credentialRef: session.credentialRef,
+    credentialRef: ["DISCONNECTED", "REVOKED", "ERROR"].includes(session.status) ? undefined : session.credentialRef,
     errorCode: session.errorCode,
     errorMessage: session.errorMessage,
   };
