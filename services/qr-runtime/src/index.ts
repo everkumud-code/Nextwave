@@ -561,7 +561,8 @@ async function handler(request: IncomingMessage, response: ServerResponse) {
   } catch (error) {
     const status = error && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
     if (status >= 500) logger.error({ error }, "QR runtime request failed");
-    const errorCode = error && typeof error === "object" && "errorCode" in error && typeof error.errorCode === "string" ? error.errorCode : undefined;\n    return send(response, status, { error: status >= 500 ? "QR runtime request failed." : error instanceof Error ? error.message : "Invalid request.", errorCode });
+    const errorCode = error && typeof error === "object" && "errorCode" in error && typeof error.errorCode === "string" ? error.errorCode : undefined;
+    return send(response, status, { error: status >= 500 ? "QR runtime request failed." : error instanceof Error ? error.message : "Invalid request.", errorCode });
   }
 }
 
