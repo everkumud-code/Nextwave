@@ -12,7 +12,7 @@ A multi-tenant messaging operations SaaS with organisation workspaces, sender in
 - E.164 phone validation, duplicate sender protection and audit events
 - PostgreSQL persistence through Prisma
 
-The sender dashboard now reads real database records. New sender records begin in PENDING state. Provider pairing and message dispatch are separate milestones and are not represented as live when they are not connected.
+The sender dashboard now reads real database records. New sender records begin in PENDING state. The QR pairing UI and runtime are implemented as a separate long-running service; deploy that service and apply database migrations before connecting real senders.
 
 ## Stack
 
@@ -46,6 +46,7 @@ The sender dashboard now reads real database records. New sender records begin i
 - `docs/connector-architecture.md`
 - `docs/qr-session-architecture.md`
 - `docs/qr-session-service-api.md`
+- `docs/qr-runtime-deployment.md`
 
 ## Next milestones
 
