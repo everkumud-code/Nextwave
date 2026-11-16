@@ -10,9 +10,9 @@ A multi-tenant messaging operations SaaS with organisation workspaces, sender in
 - Tenant-scoped sender inventory API
 - Sender create, rename and archive operations
 - E.164 phone validation, duplicate sender protection and audit events
-- PostgreSQL persistence through Prisma
+- PostgreSQL persistence through Prisma\n- Tenant-scoped contacts, append-only WhatsApp consent records and CSV/XLSX import\n- Contact groups with campaign audience integration\n- Campaign scheduling, PostgreSQL queue leases, retries and provider receipt reconciliation\n- Separate self-hosted QR runtime and persistent queue worker
 
-The sender dashboard now reads real database records. New sender records begin in PENDING state. The QR pairing UI and runtime are implemented as a separate long-running service; deploy that service and apply database migrations before connecting real senders.
+The sender dashboard now reads real database records. New sender records begin in PENDING state. The QR pairing UI and runtime are implemented as a separate long-running service; deploy the runtime and apply database migrations before connecting real senders.
 
 ## Stack
 
@@ -39,7 +39,7 @@ The sender dashboard now reads real database records. New sender records begin i
 - `npm run lint`
 - `npm run build`
 
-## Architecture
+## Deployment\n\nA Render Blueprint is available in `render.yaml` and provisions the web app, PostgreSQL, private QR runtime and persistent queue worker. Review the plans and supply the required secrets before provisioning. See `docs/qr-runtime-deployment.md` for the full deployment and sender-pairing checklist.\n\n## Architecture
 
 - `docs/implementation-plan.md`
 - `docs/database-architecture.md`
