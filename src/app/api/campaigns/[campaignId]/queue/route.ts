@@ -23,9 +23,9 @@ export async function POST(_request: Request, route: RouteContext) {
           recipients: { select: { contactId: true } },
         },
       });
-      if (!campaign) return { error: "Campaign not found.", status: 404 as const };
-      if (campaign.status !== "DRAFT") return { error: "Only draft campaigns can be queued.", status: 409 as const };
-      if (!campaign.messageBody?.trim()) return { error: "Add message content before queueing.", status: 400 as const };
+      if (!campaign) return { error: "Campaign not found.", statusCode: 404 as const };
+      if (campaign.status !== "DRAFT") return { error: "Only draft campaigns can be queued.", statusCode: 409 as const };
+      if (!campaign.messageBody?.trim()) return { error: "Add message content before queueing.", statusCode: 400 as const };
       if (findUnsupportedTemplateVariables(campaign.messageBody).length) return { error: "Fix unsupported message variables before queueing.", status: 400 as const };
       if (!campaign.sender || !campaign.senderId || campaign.sender.organizationId !== context.organization.id || campaign.sender.status !== "CONNECTED" || campaign.sender.archivedAt) {
         return { error: "Assign an active connected sender before queueing.", status: 409 as const };
@@ -97,7 +97,7 @@ export async function POST(_request: Request, route: RouteContext) {
       return { campaignId: campaign.id, recipientCount: eligible.length, queuedCount: created.count, status: "QUEUED" as const };
     }, { isolationLevel: "Serializable" });
 
-    if ("error" in result) return NextResponse.json(result, { status: result.status });
+    if ("error" in result) return NextResponse.json(result, { status: result.statusCode });
     return NextResponse.json({ result, message: "Campaign jobs are durably queued. Message delivery requires an enabled dispatch worker." }, { status: 202 });
   } catch (error) {
     console.error("Campaign queue operation failed", error);
