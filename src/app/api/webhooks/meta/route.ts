@@ -1,16 +1,10 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { applyPendingProviderReceipts } from "@/lib/queue/provider-receipts";
+import { verifyMetaWebhookChallenge, verifyMetaWebhookSignature } from "@/lib/connectors/meta-cloud/webhook-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function constantTimeEqual(actual: string, expected: string) {
-  const left = Buffer.from(actual);
-  const right = Buffer.from(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -19,7 +13,7 @@ export async function GET(request: Request) {
   const challenge = url.searchParams.get("hub.challenge") ?? "";
   const expected = process.env.META_WEBHOOK_VERIFY_TOKEN ?? "";
   if (!expected) return new Response("Meta webhook verification is not configured.", { status: 503 });
-  if (mode !== "subscribe" || !challenge || !constantTimeEqual(token, expected)) {
+  if (!verifyMetaWebhookChallenge(mode, token, challenge, expected)) {
     return new Response("Forbidden", { status: 403 });
   }
   return new Response(challenge, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
@@ -59,8 +53,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Webhook payload is too large." }, { status: 413 });
   }
   const signature = request.headers.get("x-hub-signature-256") ?? "";
-  const expected = `sha256=${createHmac("sha256", secret).update(rawBody, "utf8").digest("hex")}`;
-  if (!signature || !constantTimeEqual(signature, expected)) {
+  if (!verifyMetaWebhookSignature(rawBody, signature, secret)) {
     return NextResponse.json({ error: "Invalid webhook signature." }, { status: 401 });
   }
 
