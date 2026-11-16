@@ -172,6 +172,7 @@ model QrSession {
   ownership          SenderOwnership
   status             QrSessionStatus @default(CREATED)
   providerSessionId  String?
+  activeKey          String?         @unique
   credentialRef      String?
   connectedAt        DateTime?
   lastSeenAt         DateTime?
