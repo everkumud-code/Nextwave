@@ -13,13 +13,7 @@ export async function GET() {
     getEligibleWhatsAppMarketingContactIds(context.organization.id, 100000),
     prisma.contact.count({ where: { organizationId: context.organization.id } }),
     prisma.contact.count({
-      where: {
-        organizationId: context.organization.id,
-        OR: [
-          { status: "UNSUBSCRIBED" },
-          { consents: { some: { channel: "WHATSAPP", purpose: "MARKETING", status: "WITHDRAWN" } } },
-        ],
-      },
+      where: { organizationId: context.organization.id, status: "UNSUBSCRIBED" },
     }),
     prisma.contact.count({
       where: { organizationId: context.organization.id, status: { in: ["INVALID", "BLOCKED"] } },
