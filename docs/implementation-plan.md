@@ -61,7 +61,7 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [ ] Deploy QR runtime and worker, then verify end-to-end provider delivery
 - [x] Baileys sent, delivered and read receipt reconciliation into message status
 - [x] Campaign completion aggregation after all jobs reach terminal delivery/failure states
-- [ ] Meta Cloud webhook reconciliation
+- [x] Meta webhook verification challenge and HMAC-SHA256 signature validation\n- [x] Durable Meta delivery receipt persistence and monotonic message status reconciliation (including early receipt replay after provider ID persistence)
 - [ ] Campaign approval workflow
 - [x] Durable queue records and organization-scoped idempotency keys
 - [x] Pure QR delivery receipt ordering and terminal-state transition tests
