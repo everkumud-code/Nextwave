@@ -89,7 +89,34 @@ export async function POST(_request: Request, route: RouteContext) {
         };
       }
 
-      const messages = eligible.map(contact => ({
+      const intervalMs = Math.max(10, Math.min(90, account.defaultIntervalSeconds || 60)) * 1000;
+      const now = new Date();
+      const [pendingQueuedCount, latestQueued, latestSubmitted] = await Promise.all([
+        tx.message.count({ where: { organizationId, senderId: campaign.senderId, status: "QUEUED" } }),
+        tx.message.findFirst({
+          where: { organizationId, senderId: campaign.senderId, status: "QUEUED" },
+          orderBy: { nextAttemptAt: "desc" },
+          select: { nextAttemptAt: true },
+        }),
+        tx.message.findFirst({
+          where: { organizationId, senderId: campaign.senderId, status: { in: ["SUBMITTED", "SENT", "DELIVERED", "READ"] }, submittedAt: { not: null } },
+          orderBy: { submittedAt: "desc" },
+          select: { submittedAt: true },
+        }),
+      ]);
+      let firstAttemptAt = new Date(now);
+      if (latestQueued) {
+        const queuedTail = latestQueued.nextAttemptAt > now
+          ? new Date(latestQueued.nextAttemptAt.getTime() + intervalMs)
+          : new Date(now.getTime() + pendingQueuedCount * intervalMs);
+        if (queuedTail > firstAttemptAt) firstAttemptAt = queuedTail;
+      }
+      if (latestSubmitted?.submittedAt) {
+        const afterLastSubmission = new Date(latestSubmitted.submittedAt.getTime() + intervalMs);
+        if (afterLastSubmission > firstAttemptAt) firstAttemptAt = afterLastSubmission;
+      }
+
+      const messages = eligible.map((contact, index) => ({
         organizationId: organizationId,
         campaignId: campaign.id,
         senderId: campaign.senderId,
@@ -103,6 +130,7 @@ export async function POST(_request: Request, route: RouteContext) {
         status: "QUEUED" as const,
         idempotencyKey: `campaign:${campaign.id}:contact:${contact.id}`,
         chargePaise: account.pricePerMessagePaise,
+        nextAttemptAt: new Date(firstAttemptAt.getTime() + index * intervalMs),
       }));
       const created = await tx.message.createMany({ data: messages, skipDuplicates: true });
       const actualChargePaise = created.count * account.pricePerMessagePaise;
@@ -142,10 +170,10 @@ export async function POST(_request: Request, route: RouteContext) {
           action: "campaign.queued",
           resourceType: "Campaign",
           resourceId: campaign.id,
-          metadata: { recipientCount: eligible.length, createdMessageCount: created.count, senderId: campaign.senderId, chargedPaise: actualChargePaise, pricePerMessagePaise: account.pricePerMessagePaise },
+          metadata: { recipientCount: eligible.length, createdMessageCount: created.count, senderId: campaign.senderId, chargedPaise: actualChargePaise, pricePerMessagePaise: account.pricePerMessagePaise, intervalSeconds: account.defaultIntervalSeconds },
         },
       });
-      return { campaignId: campaign.id, recipientCount: eligible.length, queuedCount: created.count, chargedPaise: actualChargePaise, balanceAfterPaise, pricePerMessagePaise: account.pricePerMessagePaise, status: "QUEUED" as const };
+      return { campaignId: campaign.id, recipientCount: eligible.length, queuedCount: created.count, chargedPaise: actualChargePaise, balanceAfterPaise, pricePerMessagePaise: account.pricePerMessagePaise, intervalSeconds: account.defaultIntervalSeconds, status: "QUEUED" as const };
     }, { isolationLevel: "Serializable" });
 
     if ("error" in result) return NextResponse.json(result, { status: result.statusCode });
