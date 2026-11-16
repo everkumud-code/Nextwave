@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
 
 export const runtime = "nodejs";
 const campaignSelect = {
@@ -13,22 +14,16 @@ const campaignSelect = {
 export async function GET() {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  const [campaigns, eligibleAudience] = await Promise.all([
+  const [campaigns, eligibleIds] = await Promise.all([
     prisma.campaign.findMany({
       where: { organizationId: context.organization.id },
       orderBy: { createdAt: "desc" },
       take: 100,
       select: campaignSelect,
     }),
-    prisma.contact.count({
-      where: {
-        organizationId: context.organization.id,
-        status: "ACTIVE",
-        consents: { some: { channel: "WHATSAPP", purpose: "MARKETING", status: "GRANTED" } },
-      },
-    }),
+    getEligibleWhatsAppMarketingContactIds(context.organization.id, 100000),
   ]);
-  return NextResponse.json({ campaigns, eligibleAudience });
+  return NextResponse.json({ campaigns, eligibleAudience: eligibleIds.length });
 }
 
 export async function POST(request: Request) {
@@ -52,24 +47,7 @@ export async function POST(request: Request) {
       if (sender.status !== "CONNECTED") return NextResponse.json({ error: "Select a connected sender to assign this campaign." }, { status: 409 });
     }
 
-    const eligible = await prisma.contact.findMany({
-      where: {
-        organizationId: context.organization.id,
-        status: "ACTIVE",
-        consents: { some: { channel: "WHATSAPP", purpose: "MARKETING", status: "GRANTED" } },
-      },
-      select: {
-        id: true,
-        consents: {
-          where: { channel: "WHATSAPP", purpose: "MARKETING" },
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: { status: true },
-        },
-      },
-      take: 5001,
-    });
-    const eligibleIds = eligible.filter(contact => contact.consents[0]?.status === "GRANTED").map(contact => contact.id);
+    const eligibleIds = await getEligibleWhatsAppMarketingContactIds(context.organization.id, 5001);
     if (eligibleIds.length > 5000) return NextResponse.json({ error: "Audience exceeds the 5,000-recipient campaign planning limit." }, { status: 400 });
 
     const campaign = await prisma.$transaction(async tx => {
