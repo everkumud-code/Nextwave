@@ -17,6 +17,9 @@ Configure these variables on the web application:
 - `QR_SESSION_SERVICE_URL`: internal HTTPS URL of the runtime service
 - `QR_SESSION_SERVICE_TOKEN`: same token as the runtime service
 - `QR_SESSION_REQUEST_TIMEOUT_MS`: at least `30000`
+- `QUEUE_WORKER_ENABLED`: set to `true` on a separate persistent worker service after QR runtime is reachable
+- `QUEUE_WORKER_BATCH_SIZE`: optional, defaults to `25`
+- `QUEUE_WORKER_POLL_INTERVAL_MS`: optional, defaults to `1000`
 
 Generate secrets with a password manager or a cryptographically secure generator. Keep the encryption key stable and backed up: losing it makes encrypted credentials unreadable. Never commit real secrets.
 
@@ -54,6 +57,16 @@ docker run --env-file .env -p 4100:4100 nextwave-qr-runtime
 ```
 
 The container must have outbound network access for its messaging WebSocket connections and access to the PostgreSQL database.
+
+## Queue worker
+
+Run the queue worker as a separate persistent Node.js process with the same database and web-app QR runtime URL/token:
+
+```bash
+npm run queue:worker
+```
+
+The worker claims durable queue rows, rechecks sender and latest consent state, and calls the QR runtime. It refuses to start until at least one connector reports itself configured. Keep it disabled until the runtime and a connected sender have been verified in the target environment.
 
 ## Scaling and operations
 
