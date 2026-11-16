@@ -62,10 +62,10 @@ export async function POST(request: Request, route: RouteContext) {
           withdrawnAt: status === "WITHDRAWN" ? new Date() : null,
         },
       });
-      if (channel === "WHATSAPP" && purpose === "MARKETING" && status === "WITHDRAWN") {
+      if (channel === "WHATSAPP" && purpose === "MARKETING" && status !== "UNKNOWN") {
         await tx.contact.updateMany({
           where: { id: contactId, organizationId: context.organization.id },
-          data: { status: "UNSUBSCRIBED" },
+          data: { status: status === "WITHDRAWN" ? "UNSUBSCRIBED" : "ACTIVE" },
         });
       }
       await tx.auditLog.create({
