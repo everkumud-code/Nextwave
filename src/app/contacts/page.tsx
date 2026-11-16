@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Contact, Plus, RefreshCw, Search, ShieldCheck, UserPlus, X } from "lucide-react";
+import { ContactCsvImport } from "@/components/contact-csv-import";
 
 type Consent = { channel: string; purpose: string; status: "GRANTED" | "WITHDRAWN" | "UNKNOWN"; createdAt: string };
 type ContactRecord = {
@@ -75,7 +76,7 @@ export default function ContactsPage() {
   return <div className="min-h-screen bg-[#f6f8f6]">
     <header className="sticky top-0 z-10 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/90 px-5 backdrop-blur-xl md:px-8">
       <div className="flex items-center gap-3"><Link href="/" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><ArrowLeft size={18}/></Link><div><p className="text-xs text-slate-400">Workspace / Contacts</p><h1 className="text-lg font-semibold text-slate-900">Contact Manager</h1></div></div>
-      <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#153b29]"><Plus size={16}/> Add contact</button>
+      <div className="flex flex-wrap items-center gap-2"><ContactCsvImport onImported={() => void loadContacts()} /><button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#153b29]"><Plus size={16}/> Add contact</button></div>
     </header>
     <main className="mx-auto max-w-[1400px] p-5 md:p-8">
       <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="text-sm text-slate-500">A workspace-scoped customer and audience database</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 md:text-[28px]">Your contacts</h2><p className="mt-1 text-sm text-slate-500">Normalized phone numbers, duplicate protection and consent history.</p></div><div className="rounded-xl border border-slate-200 bg-white px-4 py-3"><p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">Total contacts</p><p className="mt-1 text-2xl font-semibold text-slate-900">{total.toLocaleString()}</p></div></div>
