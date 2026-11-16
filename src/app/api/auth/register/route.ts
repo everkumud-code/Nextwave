@@ -34,6 +34,7 @@ export async function POST(request: Request) {
       const organization = await tx.organization.create({
         data: { name: organizationName, slug },
       });
+      await tx.creditAccount.create({ data: { organizationId: organization.id } });
       await tx.membership.create({
         data: {
           userId: createdUser.id,
