@@ -1,0 +1,97 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - nextwave_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - nextwave
+
+  qr-runtime:
+    build:
+      context: .
+      dockerfile: services/qr-runtime/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.hostinger
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      QR_SESSION_PORT: "4100"
+      QR_SESSION_SERVICE_TOKEN: ${QR_SESSION_SERVICE_TOKEN}
+      QR_CREDENTIAL_ENCRYPTION_KEY: ${QR_CREDENTIAL_ENCRYPTION_KEY}
+      QR_LOG_LEVEL: info
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "4100"
+    networks:
+      - nextwave
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.hostinger
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+      QR_SESSION_SERVICE_URL: http://qr-runtime:4100
+      QR_SESSION_SERVICE_TOKEN: ${QR_SESSION_SERVICE_TOKEN}
+      QR_SESSION_REQUEST_TIMEOUT_MS: "30000"
+    depends_on:
+      db:
+        condition: service_healthy
+      qr-runtime:
+        condition: service_started
+    ports:
+      - "127.0.0.1:3100:3000"
+    networks:
+      - nextwave
+
+  queue-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "queue:worker"]
+    env_file:
+      - .env.hostinger
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      QUEUE_WORKER_ENABLED: "true"
+      QUEUE_WORKER_BATCH_SIZE: "25"
+      QUEUE_WORKER_POLL_INTERVAL_MS: "1000"
+      QR_SESSION_SERVICE_URL: http://qr-runtime:4100
+      QR_SESSION_SERVICE_TOKEN: ${QR_SESSION_SERVICE_TOKEN}
+      QR_SESSION_REQUEST_TIMEOUT_MS: "30000"
+    depends_on:
+      db:
+        condition: service_healthy
+      qr-runtime:
+        condition: service_started
+    networks:
+      - nextwave
+
+volumes:
+  nextwave_postgres:
+
+networks:
+  nextwave:
+    driver: bridge
