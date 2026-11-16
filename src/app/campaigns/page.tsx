@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Megaphone, Plus, RefreshCw, Users, RadioTower, X } from "lucide-react";
+import { ArrowLeft, Megaphone, Plus, RefreshCw, Users, X } from "lucide-react";
 
 type Campaign = {
   id: string; name: string; description: string | null; status: string; channel: string;
