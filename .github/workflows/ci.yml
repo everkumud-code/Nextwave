@@ -20,5 +20,6 @@ jobs:
           DATABASE_URL: postgresql://ci:ci@localhost:5432/nextwave
       - run: npm run typecheck
       - run: npm run qr:typecheck
+      - run: npm run qr:build
       - run: npm run lint
       - run: npm run build
