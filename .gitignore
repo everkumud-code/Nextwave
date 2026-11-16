@@ -10,3 +10,6 @@ dist
 coverage
 *.log
 .DS_Store
+
+# QR runtime build output
+services/qr-runtime/dist/
