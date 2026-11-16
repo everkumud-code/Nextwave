@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, FileUp, RadioTower, Send, ShieldCheck, Users, RefreshCw } from "lucide-react";
+import { ArrowLeft, Download, FileUp, RadioTower, Send, ShieldCheck, RefreshCw } from "lucide-react";
 
 type Workspace={id:string;name:string;slug:string;creditAccount:{balancePaise:number;pricePerMessagePaise:number}|null;senders:{id:string;displayName:string;phoneNumberE164:string|null;status:string;provider:string}[];_count:{contacts:number;campaigns:number;messages:number}};
 type Campaign={id:string;name:string;messageBody:string|null;status:string;sender:{id:string;displayName:string;phoneNumberE164:string|null;status:string}|null;_count:{recipients:number;messages:number}};
@@ -40,7 +40,7 @@ export default function AdminOperationsPage(){
  useEffect(()=>{void loadWorkspaces();},[]);
  useEffect(()=>{setSenderId("");setPreview(null);void loadCampaigns(orgId);},[orgId]);
 
- async function createCampaign(e:React.FormEvent){
+ async function createCampaign(e:FormEvent){
   e.preventDefault();if(!selected)return;setSaving(true);setError("");setNotice("");
   try{
    const r=await fetch("/api/campaigns",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({organizationId:orgId,name,messageBody:body,senderId})});
