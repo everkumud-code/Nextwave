@@ -17,7 +17,7 @@ export async function GET(_request: Request, route: RouteContext) {
       sender: { select: { id: true, displayName: true, phoneNumberE164: true, status: true } },
       recipients: {
         orderBy: { createdAt: "asc" },
-        take: 100,
+        take: 5000,
         select: {
           id: true, status: true, createdAt: true,
           contact: { select: { id: true, firstName: true, lastName: true, phoneNumberE164: true, status: true } },
