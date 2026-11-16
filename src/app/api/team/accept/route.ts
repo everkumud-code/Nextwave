@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { hash } from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
-import { assertAuthConfigured, createSession } from "@/lib/auth";
+import { assertAuthConfigured, createSession, getAuthContext } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -17,10 +17,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "A valid invitation and password of at least 10 characters are required." }, { status: 400 });
     }
     const tokenHash = createHash("sha256").update(token).digest("hex");
+    const currentContext = await getAuthContext();
     const result = await prisma.$transaction(async tx => {
       const invitation = await tx.organizationInvite.findUnique({ where: { tokenHash } });
       if (!invitation || invitation.acceptedAt || invitation.expiresAt <= new Date()) return null;
       let user = await tx.user.findUnique({ where: { email: invitation.email } });
+      if (user && currentContext?.user.id !== user.id) return { requiresSignIn: true as const };
       if (!user) {
         if (!name) return { needsName: true as const };
         const passwordHash = await hash(password, 12);
@@ -46,6 +48,7 @@ export async function POST(request: Request) {
 
     if (!result) return NextResponse.json({ error: "This invitation is invalid, expired or already used." }, { status: 410 });
     if ("needsName" in result) return NextResponse.json({ error: "Enter your name to finish setting up your account." }, { status: 400 });
+    if ("requiresSignIn" in result) return NextResponse.json({ error: "This email already has a NextWave account. Sign in to that account first, then reopen this invitation link." }, { status: 401 });
     await createSession(result.userId);
     return NextResponse.json({ success: true });
   } catch (error) {
