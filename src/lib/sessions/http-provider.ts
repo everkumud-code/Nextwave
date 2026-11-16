@@ -9,6 +9,8 @@ type ServiceSessionStatus = {
   status: QrSessionStatus;
   connectedAt?: string;
   lastSeenAt?: string;
+  pairingPayload?: string;
+  pairingExpiresAt?: string;
   credentialRef?: string;
   errorCode?: string;
   errorMessage?: string;
@@ -68,6 +70,8 @@ export class HttpQrSessionProvider implements QrSessionProvider {
       status: data.status as QrSessionStatus,
       connectedAt: typeof data.connectedAt === "string" ? data.connectedAt : undefined,
       lastSeenAt: typeof data.lastSeenAt === "string" ? data.lastSeenAt : undefined,
+      pairingPayload: typeof data.qrPayload === "string" ? data.qrPayload : undefined,
+      pairingExpiresAt: typeof data.expiresAt === "string" ? data.expiresAt : undefined,
       credentialRef: typeof data.credentialRef === "string" ? data.credentialRef : undefined,
       errorCode: typeof data.errorCode === "string" ? data.errorCode : undefined,
       errorMessage: typeof data.errorMessage === "string" ? data.errorMessage : undefined,
