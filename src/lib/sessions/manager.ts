@@ -28,7 +28,8 @@ export class QrSessionManager {
     const challenge = await this.provider.createSession(input);
     const now = new Date().toISOString();
 
-    return this.repository.create({
+    try {
+      return await this.repository.create({
       id: crypto.randomUUID(),
       organizationId: input.organizationId,
       senderId: input.senderId,
@@ -39,7 +40,12 @@ export class QrSessionManager {
       pairingExpiresAt: challenge.expiresAt,
       createdAt: now,
       updatedAt: now,
-    });
+      });
+    } catch (error) {
+      // Avoid orphaning a provider-side session if the durable write fails.
+      await this.provider.revokeSession(challenge.providerSessionId).catch(() => undefined);
+      throw error;
+    }
   }
 
   async refresh(organizationId: string, sessionId: string): Promise<QrSession> {
