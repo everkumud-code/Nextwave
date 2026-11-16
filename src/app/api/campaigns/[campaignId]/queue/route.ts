@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { hasCurrentMarketingConsent } from "@/lib/campaign-audience-rules";
-import { renderMessageTemplate } from "@/lib/message-template";
+import { renderMessageTemplate, findUnsupportedTemplateVariables } from "@/lib/message-template";
 
 export const runtime = "nodejs";
 type RouteContext = { params: Promise<{ campaignId: string }> };
@@ -19,14 +19,15 @@ export async function POST(_request: Request, route: RouteContext) {
         where: { id: campaignId, organizationId: context.organization.id },
         select: {
           id: true, name: true, messageBody: true, status: true, scheduledAt: true, senderId: true,
-          sender: { select: { id: true, status: true, archivedAt: true } },
+          sender: { select: { id: true, organizationId: true, status: true, archivedAt: true } },
           recipients: { select: { contactId: true } },
         },
       });
       if (!campaign) return { error: "Campaign not found.", status: 404 as const };
       if (campaign.status !== "DRAFT") return { error: "Only draft campaigns can be queued.", status: 409 as const };
       if (!campaign.messageBody?.trim()) return { error: "Add message content before queueing.", status: 400 as const };
-      if (!campaign.sender || !campaign.senderId || campaign.sender.status !== "CONNECTED" || campaign.sender.archivedAt) {
+      if (findUnsupportedTemplateVariables(campaign.messageBody).length) return { error: "Fix unsupported message variables before queueing.", status: 400 as const };
+      if (!campaign.sender || !campaign.senderId || campaign.sender.organizationId !== context.organization.id || campaign.sender.status !== "CONNECTED" || campaign.sender.archivedAt) {
         return { error: "Assign an active connected sender before queueing.", status: 409 as const };
       }
       if (campaign.scheduledAt && campaign.scheduledAt.getTime() > Date.now()) {
@@ -82,7 +83,7 @@ export async function POST(_request: Request, route: RouteContext) {
         where: { campaignId: campaign.id, status: "PENDING" },
         data: { status: "QUEUED" },
       });
-      await tx.campaign.update({ where: { id: campaign.id }, data: { status: "QUEUED", startedAt: new Date() } });
+      await tx.campaign.update({ where: { id: campaign.id }, data: { status: "QUEUED" } });
       await tx.auditLog.create({
         data: {
           organizationId: context.organization.id,
