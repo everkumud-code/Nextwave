@@ -458,7 +458,7 @@ async function sendMessage(body: Record<string, unknown>) {
   const lockToken = typeof body.lockToken === "string" ? body.lockToken : "";
   const consentRecordId = typeof body.consentRecordId === "string" ? body.consentRecordId : "";
 
-  if (!organizationId || !senderId || !idempotencyKey || !lockToken || !/^\+[1-9]\d{7,14}$/.test(recipient) || !messageBody.trim() || messageBody.length > 4096) {
+  if (!organizationId || !senderId || !idempotencyKey || !lockToken || !consentRecordId || !/^\+[1-9]\d{7,14}$/.test(recipient) || !messageBody.trim() || messageBody.length > 4096) {
     throw Object.assign(new Error("organizationId, senderId, E.164 recipient, message body, idempotencyKey and lockToken are required."), { statusCode: 400, errorCode: "INVALID_MESSAGE" });
   }
 
