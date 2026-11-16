@@ -40,7 +40,7 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] Contact consent controls with audit events and unsubscribe/re-consent state updates
 - [x] CSV import with header aliases, quoted-field parsing, 5,000-row validation and preview
 - [x] Tenant-scoped duplicate detection, row-level errors, explicit consent import and per-contact audit events
-- [ ] XLSX import and configurable field mapping
+- [x] XLSX contact import for first worksheet with shared/inline string parsing, duplicate validation and explicit consent handling\n- [ ] Configurable import field mapping
 - [x] Consent-aware campaign audience selection using latest WhatsApp marketing consent state
 - [x] Campaign draft creation with tenant-scoped sender assignment and recipient snapshot
 - [x] Campaign Manager UI with audience/suppression metrics and draft inventory
