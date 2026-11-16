@@ -264,6 +264,17 @@ async function startSocket(session: RuntimeSession) {
     }
   });
 
+  socket.ev.on("messages.update", (updates) => {
+    if (generation !== session.generation || session.stopping) return;
+    for (const update of updates) {
+      const providerMessageId = update.key?.id;
+      const status = update.update?.status;
+      if (!providerMessageId || typeof status !== "number") continue;
+      const mapped = mapBaileysReceiptStatus(status);
+      if (mapped) void persistDeliveryUpdate(providerMessageId, mapped).catch((error) => logger.error({ error }, "Could not persist message delivery update"));
+    }
+  });
+
   socket.ev.on("messages.upsert", () => {
     if (generation !== session.generation || session.stopping) return;
     session.lastSeenAt = new Date().toISOString();
@@ -448,6 +459,66 @@ async function restoreSessions() {
   }
 }
 
+
+
+async function persistDeliveryUpdate(providerMessageId: string, status: "SENT" | "DELIVERED" | "READ") {
+  const message = await prisma.message.findFirst({
+    where: { providerMessageId },
+    select: { id: true, organizationId: true, campaignId: true, recipientE164: true },
+  });
+  if (!message) return;
+
+  const previousStatuses = status === "SENT"
+    ? ["QUEUED", "SUBMITTED"]
+    : status === "DELIVERED"
+      ? ["QUEUED", "SUBMITTED", "SENT"]
+      : ["QUEUED", "SUBMITTED", "SENT", "DELIVERED"];
+  const updated = await prisma.message.updateMany({
+    where: { id: message.id, status: { in: previousStatuses as never[] } },
+    data: {
+      status,
+      deliveredAt: status === "DELIVERED" || status === "READ" ? new Date() : undefined,
+      readAt: status === "READ" ? new Date() : undefined,
+      lockedAt: null,
+      lockToken: null,
+    },
+  });
+  if (!updated.count) return;
+
+  if (message.campaignId) {
+    const contact = await prisma.contact.findFirst({
+      where: { organizationId: message.organizationId, phoneNumberE164: message.recipientE164 },
+      select: { id: true },
+    });
+    if (contact) {
+      await prisma.campaignRecipient.updateMany({
+        where: {
+          campaignId: message.campaignId,
+          contactId: contact.id,
+          status: { in: ["QUEUED", "SUBMITTED", "SENT", "DELIVERED"] },
+        },
+        data: { status },
+      });
+    }
+
+    const remaining = await prisma.message.count({
+      where: { campaignId: message.campaignId, status: { in: ["QUEUED", "SUBMITTED", "SENT"] } },
+    });
+    if (remaining === 0) {
+      await prisma.campaign.updateMany({
+        where: { id: message.campaignId, status: { in: ["QUEUED", "RUNNING"] } },
+        data: { status: "COMPLETED", completedAt: new Date() },
+      });
+    }
+  }
+}
+
+function mapBaileysReceiptStatus(status: number): "SENT" | "DELIVERED" | "READ" | null {
+  if (status === 2) return "SENT";
+  if (status === 3) return "DELIVERED";
+  if (status === 4 || status === 5) return "READ";
+  return null;
+}
 
 async function sendMessage(body: Record<string, unknown>) {
   const organizationId = typeof body.organizationId === "string" ? body.organizationId : "";
