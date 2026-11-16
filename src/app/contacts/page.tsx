@@ -21,7 +21,9 @@ const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 te
 
 export default function ContactsPage() {
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
-  const [total, setTotal] = useState(0);\n  const [nextCursor, setNextCursor] = useState<string | null>(null);\n  const [loadingMore, setLoadingMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
