@@ -13,7 +13,7 @@ A multi-tenant messaging operations SaaS with organisation workspaces, sender in
 - PostgreSQL persistence through Prisma
 - Tenant-scoped contacts, append-only WhatsApp consent records and CSV/XLSX import
 - Contact groups with campaign audience integration
-- Campaign scheduling, PostgreSQL queue leases, retries and provider receipt reconciliation
+- Campaign scheduling, PostgreSQL queue leases, retries and provider receipt reconciliation\n- Workspace analytics overview with message outcomes and 14-day volume trend
 - Separate self-hosted QR runtime and persistent queue worker
 
 The sender dashboard now reads real database records. New sender records begin in PENDING state. The QR pairing UI and runtime are implemented as a separate long-running service; deploy the runtime and apply database migrations before connecting real senders.
