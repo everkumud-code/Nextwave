@@ -1,10 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 
-export type ConsentSnapshot = { status: "GRANTED" | "WITHDRAWN" | "UNKNOWN" };
-
-export function hasCurrentMarketingConsent(records: ConsentSnapshot[]): boolean {
-  return records[0]?.status === "GRANTED";
-}
+import { hasCurrentMarketingConsent } from "@/lib/campaign-audience-rules";
 
 export async function getEligibleWhatsAppMarketingContactIds(organizationId: string, limit = 5001) {
   const candidates = await prisma.contact.findMany({
