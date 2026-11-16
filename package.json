@@ -11,7 +11,11 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "qr:dev": "tsx services/qr-runtime/src/index.ts",
+    "qr:typecheck": "tsc -p services/qr-runtime/tsconfig.json --noEmit",
+    "qr:build": "tsc -p services/qr-runtime/tsconfig.json",
+    "qr:start": "node services/qr-runtime/dist/index.js"
   },
   "dependencies": {
     "@tailwindcss/forms": "^0.5.10",
@@ -24,7 +28,10 @@
     "@prisma/client": "^6.19.0",
     "bcryptjs": "^2.4.3",
     "jose": "^5.9.6",
-    "qrcode.react": "^4.2.0"
+    "qrcode.react": "^4.2.0",
+    "@whiskeysockets/baileys": "^6.7.18",
+    "@hapi/boom": "^10.0.1",
+    "pino": "^9.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -37,6 +44,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "prisma": "^6.19.0",
-    "@types/bcryptjs": "^2.4.6"
+    "@types/bcryptjs": "^2.4.6",
+    "tsx": "^4.19.2"
   }
 }
