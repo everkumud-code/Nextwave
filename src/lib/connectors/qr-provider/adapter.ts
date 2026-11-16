@@ -101,6 +101,7 @@ export class ExperimentalQrProviderAdapter implements MessagingConnector {
           body: input.body,
           idempotencyKey: input.idempotencyKey,
           lockToken: input.lockToken,
+          consentRecordId: input.consentRecordId,
         }),
         signal: AbortSignal.timeout(config.timeoutMs),
       });
