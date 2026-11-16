@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { CheckCircle2, Loader2, QrCode, RefreshCw, ShieldAlert, Unplug, X } from "lucide-react";
 
@@ -13,7 +13,8 @@ type Session = {
   lastSeenAt?: string;
   lastErrorMessage?: string;
 };
-type Props = { senderId: string; senderName: string; disabled?: boolean };
+type SenderStatus = "PENDING" | "CONNECTED" | "ATTENTION" | "DISCONNECTED" | "RESTRICTED" | "ARCHIVED";
+type Props = { senderId: string; senderName: string; disabled?: boolean; onStatusChange?: (status: SenderStatus) => void };
 
 const labels: Record<Session["status"], string> = {
   CREATED: "Preparing session",
@@ -26,12 +27,14 @@ const labels: Record<Session["status"], string> = {
   ERROR: "Connection error",
 };
 
-export function SenderConnection({ senderId, senderName, disabled }: Props) {
+export function SenderConnection({ senderId, senderName, disabled, onStatusChange }: Props) {
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
+  const onStatusChangeRef = useRef(onStatusChange);
+  useEffect(() => { onStatusChangeRef.current = onStatusChange; }, [onStatusChange]);
 
   const request = useCallback(async (method: "GET" | "POST" | "DELETE") => {
     const response = await fetch(`/api/senders/${senderId}/session`, { method, cache: "no-store" });
@@ -44,6 +47,8 @@ export function SenderConnection({ senderId, senderName, disabled }: Props) {
     try {
       const next = await request("GET");
       setSession(next);
+      const status: SenderStatus = next?.status === "CONNECTED" ? "CONNECTED" : next?.status === "RECONNECTING" ? "ATTENTION" : next && ["DISCONNECTED", "REVOKED", "ERROR"].includes(next.status) ? "DISCONNECTED" : "PENDING";
+      onStatusChangeRef.current?.(status);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to refresh session.");
@@ -60,7 +65,12 @@ export function SenderConnection({ senderId, senderName, disabled }: Props) {
 
   async function start() {
     setBusy(true); setError("");
-    try { setSession(await request("POST")); }
+    try {
+      const next = await request("POST");
+      setSession(next);
+      const status: SenderStatus = next?.status === "CONNECTED" ? "CONNECTED" : next?.status === "RECONNECTING" ? "ATTENTION" : next && ["DISCONNECTED", "REVOKED", "ERROR"].includes(next.status) ? "DISCONNECTED" : "PENDING";
+      onStatusChangeRef.current?.(status);
+    }
     catch (err) { setError(err instanceof Error ? err.message : "Unable to start QR session."); }
     finally { setBusy(false); }
   }
@@ -68,7 +78,11 @@ export function SenderConnection({ senderId, senderName, disabled }: Props) {
   async function disconnect() {
     if (!window.confirm("Disconnect this sender session?")) return;
     setBusy(true); setError("");
-    try { setSession(await request("DELETE")); }
+    try {
+      const next = await request("DELETE");
+      setSession(next);
+      onStatusChangeRef.current?.("DISCONNECTED");
+    }
     catch (err) { setError(err instanceof Error ? err.message : "Unable to disconnect sender."); }
     finally { setBusy(false); }
   }
