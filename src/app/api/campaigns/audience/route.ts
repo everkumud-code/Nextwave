@@ -5,7 +5,7 @@ import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience"
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
 
