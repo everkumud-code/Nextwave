@@ -328,7 +328,7 @@ async function createSession(body: Record<string, unknown>) {
   if (!organizationId || !senderId || !ownership) throw Object.assign(new Error("organizationId, senderId and ownership are required."), { statusCode: 400 });
 
   const sender = await prisma.sender.findFirst({
-    where: { id: senderId, organizationId, archivedAt: null, connector: "QR_SESSION", ownership },
+    where: { id: senderId, organizationId, archivedAt: null, connector: "QR_SESSION", ownership, organization: { status: "ACTIVE" } },
     select: { id: true },
   });
   if (!sender) throw Object.assign(new Error("Sender was not found for this workspace or connector."), { statusCode: 404 });
