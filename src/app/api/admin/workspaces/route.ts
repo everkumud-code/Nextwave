@@ -18,7 +18,7 @@ export async function GET() {
       senders: {
         where: { archivedAt: null },
         orderBy: { createdAt: "asc" },
-        select: { id: true, displayName: true, phoneNumberE164: true, status: true, provider: true },
+        select: { id: true, displayName: true, phoneNumberE164: true, status: true, connector: true },
       },
       _count: { select: { contacts: true, campaigns: true, messages: true } },
     },
