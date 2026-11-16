@@ -75,7 +75,7 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}
-      QUEUE_WORKER_ENABLED: "true"
+      QUEUE_WORKER_ENABLED: "false"
       QUEUE_WORKER_BATCH_SIZE: "25"
       QUEUE_WORKER_POLL_INTERVAL_MS: "1000"
       QR_SESSION_SERVICE_URL: http://qr-runtime:4100
