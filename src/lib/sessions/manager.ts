@@ -68,8 +68,8 @@ export class QrSessionManager {
     // Pairing data is ephemeral and retained only in the current response.
     return {
       ...updated,
-      pairingPayload: remote.status === "CONNECTED" ? undefined : session.pairingPayload,
-      pairingExpiresAt: remote.status === "CONNECTED" ? undefined : session.pairingExpiresAt,
+      pairingPayload: ["QR_PENDING", "PAIRING"].includes(remote.status) ? session.pairingPayload : undefined,
+      pairingExpiresAt: ["QR_PENDING", "PAIRING"].includes(remote.status) ? session.pairingExpiresAt : undefined,
     };
   }
 
