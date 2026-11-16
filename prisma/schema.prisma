@@ -307,6 +307,12 @@ model Message {
   status            MessageStatus @default(QUEUED)
   idempotencyKey    String
   providerMessageId String?
+  attemptCount      Int           @default(0)
+  maxAttempts       Int           @default(5)
+  nextAttemptAt    DateTime      @default(now())
+  lockedAt         DateTime?
+  lockToken        String?
+  lastAttemptAt    DateTime?
   errorCode         String?
   errorMessage      String?
   submittedAt       DateTime?
@@ -321,6 +327,7 @@ model Message {
   @@index([organizationId, status, createdAt])
   @@index([campaignId, status])
   @@index([providerMessageId])
+  @@index([status, nextAttemptAt, lockedAt])
 }
 
 model AuditLog {
