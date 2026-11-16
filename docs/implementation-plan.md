@@ -9,6 +9,8 @@ The user has rejected WhatsApp Cloud API for the current scope. Keep its scaffol
 ## Milestone 1 — Foundation
 - [x] Initialise repository and application scaffold
 - [ ] Complete responsive dashboard shell
+- [x] Add PostgreSQL Prisma schema and client foundation
+- [x] Add tenant-scoped QR session repository
 - [ ] Add typed domain models and mock repository
 
 ## Milestone 2 — Identity and tenancy
