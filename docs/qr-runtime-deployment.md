@@ -47,7 +47,21 @@ Health endpoints:
 
 The runtime API is protected by the server-to-server bearer token.
 
-## Render deployment\n\nA Render Blueprint is provided at the repository root in `render.yaml`. It provisions a PostgreSQL database, the Next.js web service, a private QR runtime service and a persistent queue worker. The web service applies Prisma migrations in its pre-deploy command.\n\n1. Create a new Blueprint in Render and connect this repository.\n2. Review the Singapore region and selected service/database plans before provisioning; these are paid persistent services.\n3. Supply a unique `AUTH_SECRET` (at least 32 characters) and the public web URL when prompted.\n4. Generate one 32-byte encryption key as 64 hexadecimal characters for `QR_CREDENTIAL_ENCRYPTION_KEY`. Keep it backed up and stable.\n5. Generate one high-entropy `QR_SESSION_SERVICE_TOKEN` and enter the exact same value for the web, private QR runtime and queue worker services.\n6. Verify that the web health endpoint `/api/health` returns `status: ok` and the private runtime `/readyz` can reach PostgreSQL.\n7. Pair a test sender from Sender Manager. Only after it reports CONNECTED should you run a controlled end-to-end message test.\n\nThe Blueprint starts the queue worker. If you want to stage deployment without sending messages, set `QUEUE_WORKER_ENABLED=false` on the worker until the runtime, sender and connector configuration are verified. Do not use a placeholder encryption key or rotate it after sessions have been paired.\n\n## Container deployment
+## Render deployment
+
+A Render Blueprint is provided at the repository root in `render.yaml`. It provisions a PostgreSQL database, the Next.js web service, a private QR runtime service and a persistent queue worker. The web service applies Prisma migrations in its pre-deploy command.
+
+1. Create a new Blueprint in Render and connect this repository.
+2. Review the Singapore region and selected service/database plans before provisioning; these are paid persistent services.
+3. Supply a unique `AUTH_SECRET` (at least 32 characters) and the public web URL when prompted.
+4. Generate one 32-byte encryption key as 64 hexadecimal characters for `QR_CREDENTIAL_ENCRYPTION_KEY`. Keep it backed up and stable.
+5. Generate one high-entropy `QR_SESSION_SERVICE_TOKEN` and enter the exact same value for the web, private QR runtime and queue worker services.
+6. Verify that the web health endpoint `/api/health` returns `status: ok` and the private runtime `/readyz` can reach PostgreSQL.
+7. Pair a test sender from Sender Manager. Only after it reports CONNECTED should you run a controlled end-to-end message test.
+
+The Blueprint starts the queue worker. If you want to stage deployment without sending messages, set `QUEUE_WORKER_ENABLED=false` on the worker until the runtime, sender and connector configuration are verified. Do not use a placeholder encryption key or rotate it after sessions have been paired.
+
+## Container deployment
 
 Build from the repository root using `services/qr-runtime/Dockerfile`:
 
