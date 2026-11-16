@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAuthContext, canManageSenders } from "@/lib/auth";
+import { getAuthContext, canManageSenders, isPlatformAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { parseContactCsv, type ParsedContactRow } from "@/lib/contact-import";
 import { parseContactXlsx } from "@/lib/contact-xlsx";
@@ -11,15 +11,15 @@ const MAX_XLSX_BYTES = 5 * 1024 * 1024;
 export async function POST(request: Request) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  if (!canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to import contacts." }, { status: 403 });
-
   try {
     let rows: ParsedContactRow[];
+    let requestedOrganizationId: string | null = null;
     let importSource = "CSV_IMPORT";
     let previewOnly = true;
     const contentType = request.headers.get("content-type") ?? "";
     if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
+      requestedOrganizationId = typeof form.get("organizationId") === "string" ? String(form.get("organizationId")) : null;
       const file = form.get("file");
       previewOnly = form.get("preview") !== "false";
       if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") return NextResponse.json({ error: "Select a CSV or XLSX file." }, { status: 400 });
@@ -35,14 +35,19 @@ export async function POST(request: Request) {
       } else return NextResponse.json({ error: "Only .csv and .xlsx files are supported." }, { status: 400 });
     } else {
       const body = await request.json();
+      requestedOrganizationId = typeof body.organizationId === "string" ? body.organizationId : null;
       if (typeof body.csv !== "string" || !body.csv.trim()) return NextResponse.json({ error: "Upload a CSV or XLSX file." }, { status: 400 });
       if (new TextEncoder().encode(body.csv).length > MAX_CSV_BYTES) return NextResponse.json({ error: "CSV file must be 2 MB or smaller." }, { status: 413 });
       previewOnly = body.preview !== false;
       rows = parseContactCsv(body.csv);
     }
+    const isAdmin = isPlatformAdminUser(context.user);
+    if (requestedOrganizationId && !isAdmin) return NextResponse.json({ error: "Platform admin access required." }, { status: 403 });
+    if (!requestedOrganizationId && !canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to import contacts." }, { status: 403 });
+    const organizationId = requestedOrganizationId || context.organization.id;
     const candidates = rows.filter(row => row.phoneNumberE164 && row.errors.length === 0);
     const existing = await prisma.contact.findMany({
-      where: { organizationId: context.organization.id, phoneNumberE164: { in: candidates.map(row => row.phoneNumberE164!) } },
+      where: { organizationId: organizationId, phoneNumberE164: { in: candidates.map(row => row.phoneNumberE164!) } },
       select: { phoneNumberE164: true },
     });
     const existingNumbers = new Set(existing.map(row => row.phoneNumberE164));
@@ -67,7 +72,7 @@ export async function POST(request: Request) {
         await prisma.$transaction(async tx => {
           const contact = await tx.contact.create({
             data: {
-              organizationId: context.organization.id,
+              organizationId: organizationId,
               phoneNumber: row.phoneNumber,
               phoneNumberE164: row.phoneNumberE164!,
               firstName: row.firstName,
@@ -84,7 +89,7 @@ export async function POST(request: Request) {
           });
           await tx.auditLog.create({
             data: {
-              organizationId: context.organization.id,
+              organizationId: organizationId,
               actorUserId: context.user.id,
               action: "contact.imported",
               resourceType: "Contact",
