@@ -36,7 +36,7 @@ The QR payload is transient. The web app returns it only to the initiating autho
 
 ## Read session state
 
-`GET /v1/sessions/{sessionId}`
+`GET /v1/sessions/{sessionId}?organizationId={organizationId}`
 
 Response:
 ```json
@@ -60,6 +60,8 @@ The service returns the current QR payload and expiry only while pairing is pend
 ## Revoke session
 
 `DELETE /v1/sessions/{sessionId}`
+
+Request body: `{ "organizationId": "org_id" }`.
 
 Success response: HTTP `204 No Content`.
 
