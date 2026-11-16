@@ -15,7 +15,8 @@
     "qr:dev": "tsx services/qr-runtime/src/index.ts",
     "qr:typecheck": "tsc -p services/qr-runtime/tsconfig.json --noEmit",
     "qr:build": "tsc -p services/qr-runtime/tsconfig.json",
-    "qr:start": "node services/qr-runtime/dist/index.js"
+    "qr:start": "node services/qr-runtime/dist/index.js",
+    "test": "tsx --test src/lib/sessions/*.test.ts"
   },
   "dependencies": {
     "@tailwindcss/forms": "^0.5.10",
