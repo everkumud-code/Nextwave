@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       });
       await tx.auditLog.create({
         data: {
-          organizationId: context.organization.id,
+          organizationId,
           actorUserId: context.user.id,
           action: "campaign.created",
           resourceType: "Campaign",
