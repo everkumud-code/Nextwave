@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
+import { applyPendingProviderReceipts } from "@/lib/queue/provider-receipts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,38 +90,38 @@ export async function POST(request: Request) {
         const timestamp = event.timestamp && /^\d{1,12}$/.test(event.timestamp)
           ? new Date(Number(event.timestamp) * 1000)
           : new Date();
-        const result = await prisma.$transaction(async tx => {
-          const updated = await tx.message.updateMany({
+        const status = event.status!.toUpperCase() as "SENT" | "DELIVERED" | "READ" | "FAILED";
+        const errorCode = event.errors?.[0]?.code ? String(event.errors[0].code) : null;
+        const errorMessage = (event.errors?.[0]?.title || event.errors?.[0]?.message || null)?.slice(0, 500) ?? null;
+        await prisma.$transaction(async tx => {
+          await tx.providerDeliveryReceipt.upsert({
             where: {
+              organizationId_senderId_providerMessageId_status_eventTimestamp: {
+                organizationId: sender.organizationId,
+                senderId: sender.id,
+                providerMessageId,
+                status,
+                eventTimestamp: timestamp,
+              },
+            },
+            create: {
               organizationId: sender.organizationId,
               senderId: sender.id,
               providerMessageId,
-              status: { in: transition.allowedFrom as ("QUEUED" | "SUBMITTED" | "SENT" | "DELIVERED" | "READ" | "FAILED" | "CANCELLED")[] },
+              status,
+              eventTimestamp: timestamp,
+              errorCode,
+              errorMessage,
             },
-            data: {
-              status: event.status!.toUpperCase() as "SENT" | "DELIVERED" | "READ" | "FAILED",
-              ...(transition.timestampField ? { [transition.timestampField]: timestamp } : {}),
-              ...(event.status?.toLowerCase() === "failed" ? {
-                errorCode: event.errors?.[0]?.code ? String(event.errors[0].code) : "META_DELIVERY_FAILED",
-                errorMessage: (event.errors?.[0]?.title || event.errors?.[0]?.message || "Meta reported message delivery failure.").slice(0, 500),
-              } : {}),
-            },
+            update: {},
           });
-          if (updated.count) {
-            await tx.auditLog.create({
-              data: {
-                organizationId: sender.organizationId,
-                actorType: "SYSTEM",
-                action: `message.meta_${event.status!.toLowerCase()}`,
-                resourceType: "Message",
-                metadata: { providerMessageId, senderId: sender.id, eventTimestamp: event.timestamp ?? null },
-              },
-            });
-          }
-          return updated.count;
+          await applyPendingProviderReceipts(tx, {
+            organizationId: sender.organizationId,
+            senderId: sender.id,
+            providerMessageId,
+          });
         });
-        if (result) processed++;
-        else ignored++;
+        processed++;
       }
     }
   }
