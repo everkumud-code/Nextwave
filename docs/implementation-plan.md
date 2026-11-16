@@ -1,10 +1,8 @@
 # Implementation plan
 
-## Product decision
+## Product direction
 
-NextWave will use a provider-neutral SaaS core. The requested self-hosted QR approach is restricted to an isolated, disabled session lab. It is not a production WhatsApp bulk-messaging transport unless written platform authorization is obtained for the exact use case.
-
-The user has rejected WhatsApp Cloud API for the current scope. Keep its scaffold dormant; do not make it the default or silently substitute it.
+NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector is being integrated as a separately deployed runtime behind a server-to-server API. Additional connectors can be enabled independently; the product does not assume one transport for every customer.
 
 ## Milestone 1 — Foundation
 - [x] Initialise repository and application scaffold
@@ -28,10 +26,12 @@ The user has rejected WhatsApp Cloud API for the current scope. Keep its scaffol
 - [x] Internal QR session service HTTP adapter and API contract
 - [x] Authenticated sender QR session API (start, status refresh, revoke)
 - [x] Live QR pairing panel with QR rendering, expiry and connection polling
-- [ ] Self-hosted QR runtime implementation and integration tests
-- [ ] Feature flag and server-side enforcement that keeps QR lab disabled
-- [ ] No QR-based campaign dispatch
-- [ ] Approved production connector only after provider/legal/security approval
+- [x] Authenticated sender QR session API (start, refresh, status, revoke)
+- [x] Live QR pairing panel with QR rendering, expiry and connection polling
+- [ ] Deployable QR runtime service with persistent credential storage
+- [ ] Runtime reconnect handling, health checks and integration tests
+- [ ] Sender status reconciliation worker
+- [ ] Campaign queue and dispatch adapter using configured connector capabilities
 
 ## Milestone 4 — CRM and campaign planning
 - [ ] Contact import, mapping, deduplication and validation
@@ -48,10 +48,9 @@ The user has rejected WhatsApp Cloud API for the current scope. Keep its scaffol
 - [ ] Super Admin and audit logs
 - [ ] Retention, deletion and incident-response workflows
 
-## Guardrails
-- Support only authorized accounts and consent-based communications.
-- QR pairing with genuine WhatsApp Web does not authorize unofficial automation.
-- No undocumented protocol reverse engineering, scraping, anti-ban techniques, account rotation to evade controls, or restriction circumvention.
-- Do not expose production sending from the QR session lab.
-- Stop workflows when a provider reports restrictions or an account is unhealthy.
-- Do not claim WhatsApp approval, guaranteed delivery or account safety without evidence.
+## Engineering controls
+- Never mark a sender CONNECTED unless the runtime confirms the connection.
+- Keep pairing payloads transient and credentials outside the browser.
+- Enforce organization ownership on every session operation.
+- Persist runtime state and recover sessions after process restarts.
+- Stop reconnect attempts when the runtime reports a terminal or unhealthy state.
