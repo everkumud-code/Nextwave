@@ -483,16 +483,16 @@ async function sendMessage(body: Record<string, unknown>) {
       select: { id: true, status: true, lockToken: true, providerMessageId: true, body: true },
     }),
   ]);
-  if (!sender) throw Object.assign(new Error("Sender is not connected or does not belong to an active workspace."), { statusCode: 409, errorCode: "SENDER_NOT_CONNECTED" });
-  const latestConsent = contact?.consents[0];
-  if (!latestConsent || latestConsent.status !== "GRANTED" || latestConsent.id !== consentRecordId) {
-    throw Object.assign(new Error("Recipient marketing consent is no longer current."), { statusCode: 409, errorCode: "CONSENT_REVOKED" });
-  }
   if (!message) throw Object.assign(new Error("Queued message was not found for this workspace and sender."), { statusCode: 404, errorCode: "MESSAGE_NOT_FOUND" });
   if (message.body !== messageBody) throw Object.assign(new Error("Message body does not match the persisted queue job."), { statusCode: 409, errorCode: "MESSAGE_PAYLOAD_MISMATCH" });
   if (message.providerMessageId) return { accepted: true, providerMessageId: message.providerMessageId, state: "SUBMITTED" };
   if (message.status !== "QUEUED" || message.lockToken !== lockToken) {
     throw Object.assign(new Error("Message queue lease is no longer valid."), { statusCode: 409, errorCode: "MESSAGE_LOCK_MISMATCH" });
+  }
+  if (!sender) throw Object.assign(new Error("Sender is not connected or does not belong to an active workspace."), { statusCode: 409, errorCode: "SENDER_NOT_CONNECTED" });
+  const latestConsent = contact?.consents[0];
+  if (!latestConsent || latestConsent.status !== "GRANTED" || latestConsent.id !== consentRecordId) {
+    throw Object.assign(new Error("Recipient marketing consent is no longer current."), { statusCode: 409, errorCode: "CONSENT_REVOKED" });
   }
 
   const session = [...sessions.values()].find((item) =>
