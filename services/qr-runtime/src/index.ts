@@ -338,7 +338,7 @@ async function createSession(body: Record<string, unknown>) {
   const id = randomUUID();
   const creds = initAuthCreds();
   await prisma.qrCredential.create({
-    data: { id, organizationId, senderId, encryptedCreds: encrypt(serialize(creds)) },
+    data: { id, organizationId, senderId, encryptedCreds: encrypt(serialize(creds), id) },
   });
   const session = createRuntimeSession({ id, organizationId, senderId });
   sessions.set(id, session);
