@@ -73,7 +73,7 @@ export function SenderConnection({ senderId, senderName, disabled }: Props) {
     finally { setBusy(false); }
   }
 
-  const active = session && ["CREATED", "QR_PENDING", "PAIRING", "CONNECTED", "RECONNECTING"].includes(session.status);
+  const active = session && ["CREATED", "QR_PENDING", "PAIRING", "CONNECTED", "RECONNECTING"].includes(session.status) && !(expired && ["QR_PENDING", "PAIRING"].includes(session.status));
   const expired = session?.pairingExpiresAt ? new Date(session.pairingExpiresAt).getTime() <= now : false;
 
   return <>
@@ -94,7 +94,7 @@ export function SenderConnection({ senderId, senderName, disabled }: Props) {
           : <div className="py-9 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800">{session?.status === "RECONNECTING" ? <Loader2 className="animate-spin" size={25}/> : session?.status === "ERROR" ? <ShieldAlert size={25}/> : <QrCode size={25}/>}</div><h4 className="mt-4 font-semibold text-slate-900">{expired ? "QR code expired" : session?.status === "RECONNECTING" ? "Reconnecting…" : session?.status === "ERROR" ? "Could not connect" : "Ready to connect"}</h4><p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-slate-500">{session?.lastErrorMessage || (expired ? "Generate a fresh QR code to continue." : "Start a session to request a fresh QR code from the connected session service.")}</p></div>}
           {error && <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-700">{error}</p>}
           <div className="flex gap-2">
-            {active ? <button disabled={busy} onClick={disconnect} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <Unplug size={14}/>} Disconnect</button> : <button disabled={busy} onClick={start} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#153b29] disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <QrCode size={14}/>} {session ? "Generate new QR" : "Start connection"}</button>}
+            {active ? <button disabled={busy} onClick={disconnect} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <Unplug size={14}/>} Disconnect</button> : <button disabled={busy} onClick={start} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#153b29] disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <QrCode size={14}/>} {session ? "Refresh QR" : "Start connection"}</button>}
             <button onClick={()=>void refresh()} className="rounded-xl border border-slate-200 px-3 text-slate-500 hover:bg-slate-50" title="Refresh status"><RefreshCw size={15}/></button>
           </div>
           <p className="mt-3 text-center text-[10px] leading-4 text-slate-400">This panel displays the live response from your configured QR session service. It does not simulate a successful connection.</p>
