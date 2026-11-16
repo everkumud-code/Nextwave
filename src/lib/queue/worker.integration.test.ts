@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import { claimQueuedMessages, markMessageSubmitted, retryOrFailMessage } from "./worker";
+import { processDueScheduledCampaigns } from "./scheduler";
 
 const databaseAvailable = Boolean(process.env.DATABASE_URL);
 after(async () => { if (databaseAvailable) await prisma.$disconnect(); });
@@ -116,5 +117,63 @@ test("PostgreSQL queue recovers expired leases and terminalizes exhausted jobs",
     assert.equal(terminal.errorCode, "MAX_ATTEMPTS_EXCEEDED");
   } finally {
     await prisma.message.deleteMany({ where: { organizationId } });
+  }
+});
+
+test("scheduled campaigns are atomically converted into queued recipient jobs", { skip: !databaseAvailable }, async () => {
+  const organization = await prisma.organization.create({
+    data: { name: "Scheduler integration", slug: `scheduler-${randomUUID()}` },
+  });
+  try {
+    const sender = await prisma.sender.create({
+      data: {
+        organizationId: organization.id,
+        displayName: "Integration sender",
+        phoneNumber: "9876543210",
+        phoneNumberE164: "+919876543210",
+        connector: "QR_SESSION",
+        status: "CONNECTED",
+      },
+    });
+    const contact = await prisma.contact.create({
+      data: {
+        organizationId: organization.id,
+        phoneNumber: "9876543211",
+        phoneNumberE164: "+919876543211",
+        firstName: "Test",
+        status: "ACTIVE",
+        consents: { create: {
+          channel: "WHATSAPP",
+          purpose: "MARKETING",
+          status: "GRANTED",
+          source: "INTEGRATION_TEST",
+          grantedAt: new Date(),
+        } },
+      },
+    });
+    const campaign = await prisma.campaign.create({
+      data: {
+        organizationId: organization.id,
+        senderId: sender.id,
+        name: "Due campaign",
+        messageBody: "Hello {{firstName}}",
+        status: "SCHEDULED",
+        scheduledAt: new Date(Date.now() - 60_000),
+        recipients: { create: [{ contactId: contact.id, status: "PENDING" }] },
+      },
+    });
+
+    const result = await processDueScheduledCampaigns(10);
+    assert.ok(result.scanned >= 1);
+    assert.ok(result.queued >= 1);
+    const queuedCampaign = await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    assert.equal(queuedCampaign.status, "QUEUED");
+    const message = await prisma.message.findFirstOrThrow({ where: { organizationId: organization.id, campaignId: campaign.id } });
+    assert.equal(message.status, "QUEUED");
+    assert.equal(message.recipientE164, contact.phoneNumberE164);
+    const recipient = await prisma.campaignRecipient.findFirstOrThrow({ where: { campaignId: campaign.id, contactId: contact.id } });
+    assert.equal(recipient.status, "QUEUED");
+  } finally {
+    await prisma.organization.delete({ where: { id: organization.id } });
   }
 });
