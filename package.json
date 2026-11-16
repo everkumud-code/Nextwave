@@ -12,7 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "qr:dev": "tsx services/qr-runtime/src/index.ts",
+    "qr:dev": "node --env-file=.env.local --import tsx services/qr-runtime/src/index.ts",
     "qr:typecheck": "tsc -p services/qr-runtime/tsconfig.json --noEmit",
     "qr:build": "tsc -p services/qr-runtime/tsconfig.json",
     "qr:start": "node services/qr-runtime/dist/index.js",
