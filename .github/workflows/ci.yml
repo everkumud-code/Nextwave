@@ -15,6 +15,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install
+      - run: npm run db:generate
+      - run: npx prisma validate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/nextwave
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run build
