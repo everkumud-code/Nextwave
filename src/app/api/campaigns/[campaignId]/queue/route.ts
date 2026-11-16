@@ -64,6 +64,26 @@ export async function POST(_request: Request, route: RouteContext) {
         };
       }
 
+      const account = await tx.creditAccount.upsert({
+        where: { organizationId: context.organization.id },
+        create: { organizationId: context.organization.id },
+        update: {},
+      });
+      const existingMessageCount = await tx.message.count({
+        where: { organizationId: context.organization.id, campaignId: campaign.id },
+      });
+      const estimatedNewCount = Math.max(0, eligible.length - existingMessageCount);
+      const estimatedChargePaise = estimatedNewCount * account.pricePerMessagePaise;
+      if (!Number.isSafeInteger(estimatedChargePaise) || account.balancePaise < estimatedChargePaise) {
+        return {
+          error: "Insufficient prepaid credits. Please contact your account administrator to top up before queueing this campaign.",
+          statusCode: 402 as const,
+          balancePaise: account.balancePaise,
+          requiredPaise: estimatedChargePaise,
+          pricePerMessagePaise: account.pricePerMessagePaise,
+        };
+      }
+
       const messages = eligible.map(contact => ({
         organizationId: context.organization.id,
         campaignId: campaign.id,
@@ -79,6 +99,27 @@ export async function POST(_request: Request, route: RouteContext) {
         idempotencyKey: `campaign:${campaign.id}:contact:${contact.id}`,
       }));
       const created = await tx.message.createMany({ data: messages, skipDuplicates: true });
+      if (estimatedChargePaise > 0) {
+        await tx.creditAccount.update({
+          where: { id: account.id },
+          data: { balancePaise: { decrement: estimatedChargePaise } },
+        });
+        await tx.creditTransaction.create({
+          data: {
+            organizationId: context.organization.id,
+            accountId: account.id,
+            type: "DEBIT",
+            amountPaise: estimatedChargePaise,
+            balanceAfterPaise: account.balancePaise - estimatedChargePaise,
+            pricePerMessagePaise: account.pricePerMessagePaise,
+            messageCount: estimatedNewCount,
+            reference: `campaign:${campaign.id}`,
+            description: `Prepaid charge for ${estimatedNewCount} queued campaign messages`,
+            actorUserId: context.user.id,
+          },
+        });
+      }
+
       await tx.campaignRecipient.updateMany({
         where: { campaignId: campaign.id, status: "PENDING" },
         data: { status: "QUEUED" },
@@ -91,10 +132,10 @@ export async function POST(_request: Request, route: RouteContext) {
           action: "campaign.queued",
           resourceType: "Campaign",
           resourceId: campaign.id,
-          metadata: { recipientCount: eligible.length, createdMessageCount: created.count, senderId: campaign.senderId },
+          metadata: { recipientCount: eligible.length, createdMessageCount: created.count, senderId: campaign.senderId, chargedPaise: estimatedChargePaise, pricePerMessagePaise: account.pricePerMessagePaise },
         },
       });
-      return { campaignId: campaign.id, recipientCount: eligible.length, queuedCount: created.count, status: "QUEUED" as const };
+      return { campaignId: campaign.id, recipientCount: eligible.length, queuedCount: created.count, chargedPaise: estimatedChargePaise, balanceAfterPaise: account.balancePaise - estimatedChargePaise, pricePerMessagePaise: account.pricePerMessagePaise, status: "QUEUED" as const };
     }, { isolationLevel: "Serializable" });
 
     if ("error" in result) return NextResponse.json(result, { status: result.statusCode });
