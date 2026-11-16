@@ -31,6 +31,7 @@ export interface SendMessageInput {
   recipient: string;
   body: string;
   idempotencyKey: string;
+  lockToken: string;
   consentRecordId: string;
 }
 
