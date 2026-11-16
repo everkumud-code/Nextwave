@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getQrSessionManager } from "@/lib/sessions/factory";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 type RouteContext = { params: Promise<{ senderId: string }> };
 
 async function getSender(senderId: string, organizationId: string) {
