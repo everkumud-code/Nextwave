@@ -448,6 +448,54 @@ async function restoreSessions() {
   }
 }
 
+
+async function sendMessage(body: Record<string, unknown>) {
+  const organizationId = typeof body.organizationId === "string" ? body.organizationId : "";
+  const senderId = typeof body.senderId === "string" ? body.senderId : "";
+  const recipient = typeof body.recipient === "string" ? body.recipient : "";
+  const messageBody = typeof body.body === "string" ? body.body : "";
+  const idempotencyKey = typeof body.idempotencyKey === "string" ? body.idempotencyKey : "";
+  const lockToken = typeof body.lockToken === "string" ? body.lockToken : "";
+
+  if (!organizationId || !senderId || !idempotencyKey || !lockToken || !/^\\+[1-9]\\d{7,14}$/.test(recipient) || !messageBody.trim() || messageBody.length > 4096) {
+    throw Object.assign(new Error("organizationId, senderId, E.164 recipient, message body, idempotencyKey and lockToken are required."), { statusCode: 400, errorCode: "INVALID_MESSAGE" });
+  }
+
+  const message = await prisma.message.findFirst({
+    where: { organizationId, senderId, recipientE164: recipient, idempotencyKey },
+    select: { id: true, status: true, lockToken: true, providerMessageId: true },
+  });
+  if (!message) throw Object.assign(new Error("Queued message was not found for this workspace and sender."), { statusCode: 404, errorCode: "MESSAGE_NOT_FOUND" });
+  if (message.providerMessageId) return { accepted: true, providerMessageId: message.providerMessageId, state: "SUBMITTED" };
+  if (message.status !== "QUEUED" || message.lockToken !== lockToken) {
+    throw Object.assign(new Error("Message queue lease is no longer valid."), { statusCode: 409, errorCode: "MESSAGE_LOCK_MISMATCH" });
+  }
+
+  const session = [...sessions.values()].find((item) =>
+    item.organizationId === organizationId && item.senderId === senderId && item.status === "CONNECTED" && item.socket,
+  );
+  if (!session?.socket) throw Object.assign(new Error("Sender has no active connected QR session."), { statusCode: 409, errorCode: "SENDER_NOT_CONNECTED" });
+
+  const jid = `${recipient.slice(1)}@s.whatsapp.net`;
+  const sent = await session.socket.sendMessage(jid, { text: messageBody });
+  const providerMessageId = sent?.key?.id;
+  if (!providerMessageId) throw Object.assign(new Error("Messaging runtime did not return a provider message identifier."), { statusCode: 502, errorCode: "TEMPORARY_PROVIDER_ERROR" });
+
+  const persisted = await prisma.message.updateMany({
+    where: { id: message.id, status: "QUEUED", lockToken, providerMessageId: null },
+    data: { providerMessageId },
+  });
+  if (persisted.count === 0) {
+    const latest = await prisma.message.findUnique({ where: { id: message.id }, select: { providerMessageId: true } });
+    if (!latest?.providerMessageId) throw Object.assign(new Error("Message was sent but its provider reference could not be persisted."), { statusCode: 503, errorCode: "TEMPORARY_PROVIDER_ERROR" });
+    return { accepted: true, providerMessageId: latest.providerMessageId, state: "SUBMITTED" };
+  }
+
+  session.lastSeenAt = new Date().toISOString();
+  void persistStatus(session).catch(() => undefined);
+  return { accepted: true, providerMessageId, state: "SUBMITTED" };
+}
+
 async function handler(request: IncomingMessage, response: ServerResponse) {
   const url = new URL(request.url || "/", "http://localhost");
   if (url.pathname === "/healthz" && request.method === "GET") return send(response, 200, { ok: true, service: "nextwave-qr-runtime" });
@@ -462,7 +510,7 @@ async function handler(request: IncomingMessage, response: ServerResponse) {
   if (!isAuthorized(request)) return send(response, 401, { error: "Unauthorized." });
 
   try {
-    if (url.pathname === "/v1/sessions" && request.method === "POST") {
+    if (url.pathname === "/v1/messages" && request.method === "POST") {\n      const result = await sendMessage(await readBody(request));\n      return send(response, 200, result);\n    }\n\n    if (url.pathname === "/v1/sessions" && request.method === "POST") {
       const result = await createSession(await readBody(request));
       return send(response, 201, result);
     }
@@ -484,7 +532,7 @@ async function handler(request: IncomingMessage, response: ServerResponse) {
   } catch (error) {
     const status = error && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : 500;
     if (status >= 500) logger.error({ error }, "QR runtime request failed");
-    return send(response, status, { error: status >= 500 ? "QR runtime request failed." : error instanceof Error ? error.message : "Invalid request." });
+    const errorCode = error && typeof error === "object" && "errorCode" in error && typeof error.errorCode === "string" ? error.errorCode : undefined;\n    return send(response, status, { error: status >= 500 ? "QR runtime request failed." : error instanceof Error ? error.message : "Invalid request.", errorCode });
   }
 }
 
