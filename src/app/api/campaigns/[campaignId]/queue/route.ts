@@ -97,6 +97,7 @@ export async function POST(_request: Request, route: RouteContext) {
         }),
         status: "QUEUED" as const,
         idempotencyKey: `campaign:${campaign.id}:contact:${contact.id}`,
+        chargePaise: account.pricePerMessagePaise,
       }));
       const created = await tx.message.createMany({ data: messages, skipDuplicates: true });
       if (estimatedChargePaise > 0) {
