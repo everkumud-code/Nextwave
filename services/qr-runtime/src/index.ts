@@ -47,17 +47,19 @@ function assertConfiguration() {
   if (ENCRYPTION_KEY.length !== 32) throw new Error("QR_CREDENTIAL_ENCRYPTION_KEY must be 64 hexadecimal characters.");
 }
 
-function encrypt(value: string) {
+function encrypt(value: string, context: string) {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+  cipher.setAAD(Buffer.from(context, "utf8"));
   const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   return [iv, cipher.getAuthTag(), ciphertext].map((part) => part.toString("base64url")).join(".");
 }
 
-function decrypt(value: string) {
+function decrypt(value: string, context: string) {
   const [ivPart, tagPart, cipherPart] = value.split(".");
   if (!ivPart || !tagPart || !cipherPart) throw new Error("Encrypted credential record is malformed.");
   const decipher = createDecipheriv("aes-256-gcm", ENCRYPTION_KEY, Buffer.from(ivPart, "base64url"));
+  decipher.setAAD(Buffer.from(context, "utf8"));
   decipher.setAuthTag(Buffer.from(tagPart, "base64url"));
   return Buffer.concat([
     decipher.update(Buffer.from(cipherPart, "base64url")),
@@ -99,7 +101,7 @@ function isAuthorized(request: IncomingMessage) {
 async function createAuthState(credentialId: string) {
   const credential = await prisma.qrCredential.findUnique({ where: { id: credentialId } });
   if (!credential) throw new Error("QR credential record is missing.");
-  const creds = deserialize<AuthenticationCreds>(decrypt(credential.encryptedCreds));
+  const creds = deserialize<AuthenticationCreds>(decrypt(credential.encryptedCreds, credentialId));
 
   const keyStore = {
     get: async (keyType: string, ids: string[]) => {
@@ -109,7 +111,7 @@ async function createAuthState(credentialId: string) {
       });
       return Object.fromEntries(rows.map((row) => [
         row.keyId,
-        deserialize<unknown>(decrypt(row.encryptedValue)),
+        deserialize<unknown>(decrypt(row.encryptedValue, `${credentialId}:${keyType}:${row.keyId}`)),
       ]));
     },
     set: async (data: Record<string, Record<string, unknown | null>>) => {
@@ -120,7 +122,7 @@ async function createAuthState(credentialId: string) {
           } else {
             await prisma.qrSignalKey.upsert({
               where: { credentialId_keyType_keyId: { credentialId, keyType, keyId } },
-              create: { credentialId, keyType, keyId, encryptedValue: encrypt(serialize(value)) },
+              create: { credentialId, keyType, keyId, encryptedValue: encrypt(serialize(value), `${credentialId}:${keyType}:${keyId}`) },
               update: { encryptedValue: encrypt(serialize(value)) },
             });
           }
@@ -136,7 +138,7 @@ async function createAuthState(credentialId: string) {
     saveCreds: async () => {
       await prisma.qrCredential.update({
         where: { id: credentialId },
-        data: { encryptedCreds: encrypt(serialize(creds)) },
+        data: { encryptedCreds: encrypt(serialize(creds), credentialId) },
       });
     },
   };
