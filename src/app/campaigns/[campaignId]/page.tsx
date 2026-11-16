@@ -8,6 +8,7 @@ import { ArrowLeft, CalendarClock, Check, Loader2, RefreshCw, Save, Send, Users 
 
 type Contact = { id: string; phoneNumberE164: string; firstName: string | null; lastName: string | null; email: string | null; company: string | null };
 type Sender = { id: string; displayName: string; phoneNumberE164: string; status: string };
+type ContactGroup = { id: string; name: string; _count: { members: number } };
 type Validation = { ready: boolean; issues: string[]; checks: { hasMessage: boolean; senderConnected: boolean; selectedRecipients: number; currentlyEligibleRecipients: number; suppressedRecipients: number } };
 type MessageStats = { total: number; queued: number; submitted: number; sent: number; delivered: number; read: number; failed: number; cancelled: number };
 type MessageRecord = { id: string; recipientE164: string; status: string; attemptCount: number; maxAttempts: number; errorCode: string | null; errorMessage: string | null; submittedAt: string | null; deliveredAt: string | null; readAt: string | null; createdAt: string };
@@ -29,6 +30,7 @@ export default function CampaignDetailPage() {
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [senders, setSenders] = useState<Sender[]>([]);
+  const [contactGroups, setContactGroups] = useState<ContactGroup[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [form, setForm] = useState({ name: "", description: "", messageBody: "", senderId: "", scheduledAt: "" });
   const [loading, setLoading] = useState(true);
@@ -44,10 +46,11 @@ export default function CampaignDetailPage() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [campaignData, audienceData, senderData] = await Promise.all([
+      const [campaignData, audienceData, senderData, groupData] = await Promise.all([
         readJson(await fetch(`/api/campaigns/${campaignId}`, { cache: "no-store" })),
         readJson(await fetch("/api/campaigns/audience?includeContacts=1", { cache: "no-store" })),
         readJson(await fetch("/api/senders", { cache: "no-store" })),
+        readJson(await fetch("/api/contact-groups", { cache: "no-store" })),
       ]);
       const item = campaignData.campaign as Campaign;
       const statsData = item.status !== "DRAFT" ? await readJson(await fetch(`/api/campaigns/${campaignId}/messages`, { cache: "no-store" })) : null;
@@ -56,6 +59,7 @@ export default function CampaignDetailPage() {
       setCampaign(item);
       setContacts((audienceData.contacts ?? []).slice(0, 5000));
       setSenders(senderData.senders.filter((sender: Sender) => sender.status === "CONNECTED"));
+      setContactGroups(groupData.groups ?? []);
       setSelected(item.recipients.map(row => row.contact.id));
       setForm({ name: item.name, description: item.description ?? "", messageBody: item.messageBody ?? "", senderId: item.sender?.id ?? "", scheduledAt: localDateTime(item.scheduledAt) });
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to load campaign."); }
@@ -63,6 +67,21 @@ export default function CampaignDetailPage() {
   }, [campaignId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  async function addContactGroup(groupId: string) {
+    if (!groupId || !editable) return;
+    setError(""); setNotice("");
+    try {
+      const data = await readJson(await fetch(`/api/contact-groups/${groupId}`, { cache: "no-store" }));
+      const eligibleIds = new Set(contacts.map(contact => contact.id));
+      const groupIds = (data.group.contacts as Contact[]).map(contact => contact.id);
+      const eligibleGroupIds = groupIds.filter(id => eligibleIds.has(id));
+      const skipped = groupIds.length - eligibleGroupIds.length;
+      setSelected(current => [...new Set([...current, ...eligibleGroupIds])].slice(0, 5000));
+      setValidation(null);
+      setNotice(`${eligibleGroupIds.length} eligible group contacts added${skipped ? `; ${skipped} not currently eligible and excluded` : ""}.`);
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to add group contacts."); }
+  }
 
   async function save() {
     setBusy(true); setError(""); setNotice("");
@@ -156,7 +175,7 @@ export default function CampaignDetailPage() {
             <div className="rounded-xl bg-emerald-50 p-4"><p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Selected audience</p><p className="mt-1 text-2xl font-semibold text-emerald-950">{selected.length}</p><p className="mt-1 text-[11px] text-emerald-800">Only active contacts with current WhatsApp marketing consent are selectable.</p></div>
           </section>
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 p-5"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold text-slate-900">Recipient selection</h3><p className="mt-1 text-xs text-slate-400">{contacts.length} eligible contacts available in the selection list</p></div><span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><Users size={14}/>{selected.length} selected</span></div><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search eligible contacts…" className={field+" mt-4"}/><div className="mt-3 flex gap-2"><button disabled={!editable} onClick={()=>{setSelected(contacts.map(c=>c.id));setValidation(null)}} className="text-xs font-semibold text-emerald-800 disabled:opacity-40">Select all shown</button><button disabled={!editable} onClick={()=>{setSelected([]);setValidation(null)}} className="text-xs font-semibold text-slate-500 disabled:opacity-40">Clear selection</button></div></div>
+            <div className="border-b border-slate-100 p-5"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold text-slate-900">Recipient selection</h3><p className="mt-1 text-xs text-slate-400">{contacts.length} eligible contacts available in the selection list</p></div><span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><Users size={14}/>{selected.length} selected</span></div><div className="mt-4 flex flex-wrap gap-2"><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search eligible contacts…" className={field+" min-w-[220px] flex-1"}/><select disabled={!editable || contactGroups.length===0} defaultValue="" onChange={e=>{void addContactGroup(e.target.value);e.target.value=""}} className={field+" max-w-xs"}><option value="">Add contacts from group…</option>{contactGroups.map(group=><option key={group.id} value={group.id}>{group.name} ({group._count.members})</option>)}</select></div><div className="mt-3 flex gap-2"><button disabled={!editable} onClick={()=>{setSelected(contacts.map(c=>c.id));setValidation(null)}} className="text-xs font-semibold text-emerald-800 disabled:opacity-40">Select all shown</button><button disabled={!editable} onClick={()=>{setSelected([]);setValidation(null)}} className="text-xs font-semibold text-slate-500 disabled:opacity-40">Clear selection</button></div></div>
             <div className="max-h-[560px] divide-y divide-slate-100 overflow-y-auto">{visible.map(contact=><label key={contact.id} className="flex cursor-pointer items-center gap-3 px-5 py-3 hover:bg-slate-50"><input type="checkbox" disabled={!editable} checked={selected.includes(contact.id)} onChange={e=>{setSelected(current=>e.target.checked?[...current,contact.id]:current.filter(id=>id!==contact.id));setValidation(null)}} className="rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"/><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-800">{[contact.firstName,contact.lastName].filter(Boolean).join(" ") || "Unnamed contact"}</span><span className="block truncate text-[11px] text-slate-400">{contact.phoneNumberE164} · {contact.company || contact.email || "No additional details"}</span></span>{selected.includes(contact.id)&&<Check size={15} className="text-emerald-700"/>}</label>)}</div>
             {contacts.length===0 && <p className="p-8 text-center text-xs text-slate-500">No eligible contacts. Grant valid marketing consent before adding recipients.</p>}
             <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-3 text-[11px] text-slate-500">Audience is revalidated by the server when you save. Dispatch is not enabled yet.</div>
