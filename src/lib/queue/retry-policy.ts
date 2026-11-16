@@ -29,3 +29,20 @@ export function getRetryDecision(input: {
     errorMessage,
   };
 }
+
+const PERMANENT_ERROR_CODES = new Set([
+  "INVALID_RECIPIENT",
+  "CONSENT_REQUIRED",
+  "CONSENT_REVOKED",
+  "SENDER_NOT_CONNECTED",
+  "CONNECTOR_NOT_CONFIGURED",
+  "UNSUPPORTED_CONNECTOR",
+  "AUTHENTICATION_FAILED",
+  "INVALID_MESSAGE",
+]);
+
+export function isRetryableConnectorError(errorCode: string): boolean {
+  const normalized = errorCode.trim().toUpperCase();
+  if (PERMANENT_ERROR_CODES.has(normalized)) return false;
+  return /^(TEMPORARY|RATE_LIMIT|TIMEOUT|NETWORK|PROVIDER_5XX|CONNECTOR_ERROR)/.test(normalized);
+}
