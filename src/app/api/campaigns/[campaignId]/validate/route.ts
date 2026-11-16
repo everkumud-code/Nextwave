@@ -33,7 +33,6 @@ export async function POST(_request: Request, route: RouteContext) {
   }
   if (!campaign.senderId || !campaign.sender || campaign.sender.organizationId !== context.organization.id || campaign.sender.archivedAt) issues.push("Assign an active sender from this workspace.");
   else if (campaign.sender.status !== "CONNECTED") issues.push("The assigned sender is not connected.");
-  if (campaign.scheduledAt && campaign.scheduledAt.getTime() > Date.now()) issues.push("Scheduled dispatch is not enabled yet; queue this campaign after the planned time or clear the schedule.");
   if (campaign.recipients.length === 0) issues.push("Select at least one recipient.");
 
   const selectedIds = campaign.recipients.map(recipient => recipient.contactId);
