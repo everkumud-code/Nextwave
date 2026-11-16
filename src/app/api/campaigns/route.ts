@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     const campaign = await prisma.$transaction(async tx => {
       const created = await tx.campaign.create({
         data: {
-          organizationId: context.organization.id,
+          organizationId,
           name,
           description,
           messageBody,
