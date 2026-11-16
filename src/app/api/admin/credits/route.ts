@@ -19,7 +19,6 @@ export async function GET() {
     select: {
       id: true, name: true, slug: true, status: true, createdAt: true,
       creditAccount: { select: { balancePaise: true, pricePerMessagePaise: true, defaultIntervalSeconds: true, updatedAt: true } },
-      _count: { select: { messages: true } },
     },
   });
   return NextResponse.json({ organizations });
