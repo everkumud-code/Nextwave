@@ -30,16 +30,16 @@ export class QrSessionManager {
 
     try {
       return await this.repository.create({
-      id: crypto.randomUUID(),
-      organizationId: input.organizationId,
-      senderId: input.senderId,
-      ownership: input.ownership,
-      status: "QR_PENDING",
-      providerSessionId: challenge.providerSessionId,
-      pairingPayload: challenge.payload,
-      pairingExpiresAt: challenge.expiresAt,
-      createdAt: now,
-      updatedAt: now,
+        id: crypto.randomUUID(),
+        organizationId: input.organizationId,
+        senderId: input.senderId,
+        ownership: input.ownership,
+        status: "QR_PENDING",
+        providerSessionId: challenge.providerSessionId,
+        pairingPayload: challenge.payload,
+        pairingExpiresAt: challenge.expiresAt,
+        createdAt: now,
+        updatedAt: now,
       });
     } catch (error) {
       // Avoid orphaning a provider-side session if the durable write fails.
@@ -55,17 +55,22 @@ export class QrSessionManager {
     const remote = await this.provider.getStatus(session.providerSessionId);
     const now = new Date().toISOString();
 
-    return this.repository.update(organizationId, sessionId, {
+    const updated = await this.repository.update(organizationId, sessionId, {
       status: remote.status,
       connectedAt: remote.connectedAt ?? session.connectedAt,
       lastSeenAt: remote.lastSeenAt ?? session.lastSeenAt,
       credentialRef: remote.credentialRef ?? session.credentialRef,
       lastErrorCode: remote.errorCode,
       lastErrorMessage: remote.errorMessage,
-      pairingPayload: remote.status === "CONNECTED" ? undefined : session.pairingPayload,
-      pairingExpiresAt: remote.status === "CONNECTED" ? undefined : session.pairingExpiresAt,
       updatedAt: now,
     });
+
+    // Pairing data is ephemeral and retained only in the current response.
+    return {
+      ...updated,
+      pairingPayload: remote.status === "CONNECTED" ? undefined : session.pairingPayload,
+      pairingExpiresAt: remote.status === "CONNECTED" ? undefined : session.pairingExpiresAt,
+    };
   }
 
   async revoke(organizationId: string, sessionId: string): Promise<QrSession> {
