@@ -8,20 +8,21 @@ The user has rejected WhatsApp Cloud API for the current scope. Keep its scaffol
 
 ## Milestone 1 — Foundation
 - [x] Initialise repository and application scaffold
-- [ ] Complete responsive dashboard shell
+- [x] Complete responsive authentication and sender dashboard shell
 - [x] Add PostgreSQL Prisma schema and client foundation
 - [x] Add tenant-scoped QR session repository
 - [ ] Add typed domain models and mock repository
 
 ## Milestone 2 — Identity and tenancy
-- [ ] Authentication and organisation membership
-- [ ] Role-based access control
-- [ ] Tenant isolation tests
-- [ ] Secrets management and audit events
+- [x] Email/password authentication and organisation membership
+- [x] Role-based sender management permissions (OWNER / ADMIN / MANAGER)
+- [ ] Tenant isolation integration tests
+- [x] Sender create/update/archive audit events
+- [ ] Production secrets management and audit events for remaining modules
 
 ## Milestone 3 — Sender management
-- [ ] Sender inventory and ownership model
-- [ ] Connector registry and capability discovery
+- [x] Tenant-scoped sender inventory and ownership model
+- [x] Connector registry and capability discovery contracts
 - [x] Self-hosted QR session lifecycle contracts and manager
 - [x] PostgreSQL-backed QR session repository
 - [x] Internal QR session service HTTP adapter and API contract
