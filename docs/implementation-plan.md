@@ -54,7 +54,7 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] QR connector adapter wired to the self-hosted Baileys runtime send endpoint
 - [x] Runtime validates persisted queue job, tenant, sender, lease token and payload before sending
 - [ ] Deploy QR runtime and worker, then verify end-to-end provider delivery
-- [ ] Delivery webhook reconciliation and campaign completion aggregation\n- [ ] Campaign approval and scheduled dispatch transition
+- [x] Baileys sent, delivered and read receipt reconciliation into message status\n- [x] Campaign completion aggregation after all jobs reach terminal delivery/failure states\n- [ ] Meta Cloud webhook reconciliation\n- [ ] Campaign approval and scheduled dispatch transition
 - [x] Durable queue records and organization-scoped idempotency keys\n- [ ] Queue and idempotency integration tests against PostgreSQL
 - [ ] Retry and dead-letter handling with provider-aware failure handling
 
