@@ -20,7 +20,6 @@ export async function claimQueuedMessages(limit = 25): Promise<ClaimedMessage[]>
   const lockToken = randomUUID();
 
   return prisma.$transaction(async tx => {
-    const now = new Date();
     await tx.$executeRaw(Prisma.sql`
       UPDATE "Message"
       SET "status" = 'FAILED',
