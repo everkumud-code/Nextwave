@@ -52,7 +52,7 @@ export function ContactCsvImport({ onImported }: { onImported: () => void }) {
   }
 
   return <>
-    <button onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileUp size={16}/> Import CSV</button>
+    <button onClick={() => setOpen(true)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileUp size={16}/> Import contacts</button>
     {notice && <span className="ml-3 text-xs font-medium text-emerald-700">{notice}</span>}
     {open && <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
       <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl">
