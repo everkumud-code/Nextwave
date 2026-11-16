@@ -42,6 +42,8 @@ Response:
 ```json
 {
   "status": "QR_PENDING",
+  "qrPayload": "short-lived-pairing-payload",
+  "expiresAt": "2026-11-16T12:05:00.000Z",
   "connectedAt": null,
   "lastSeenAt": null,
   "credentialRef": null,
@@ -53,7 +55,7 @@ Response:
 Allowed status values:
 `CREATED`, `QR_PENDING`, `PAIRING`, `CONNECTED`, `RECONNECTING`, `DISCONNECTED`, `REVOKED`, `ERROR`.
 
-The service returns a credential reference, never raw session credentials.
+The service returns the current QR payload and expiry only while pairing is pending. It returns a credential reference, never raw session credentials.
 
 ## Revoke session
 
