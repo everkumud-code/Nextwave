@@ -26,16 +26,16 @@ export async function POST(_request: Request, route: RouteContext) {
       if (!campaign) return { error: "Campaign not found.", statusCode: 404 as const };
       if (campaign.status !== "DRAFT") return { error: "Only draft campaigns can be queued.", statusCode: 409 as const };
       if (!campaign.messageBody?.trim()) return { error: "Add message content before queueing.", statusCode: 400 as const };
-      if (findUnsupportedTemplateVariables(campaign.messageBody).length) return { error: "Fix unsupported message variables before queueing.", status: 400 as const };
+      if (findUnsupportedTemplateVariables(campaign.messageBody).length) return { error: "Fix unsupported message variables before queueing.", statusCode: 400 as const };
       if (!campaign.sender || !campaign.senderId || campaign.sender.organizationId !== context.organization.id || campaign.sender.status !== "CONNECTED" || campaign.sender.archivedAt) {
-        return { error: "Assign an active connected sender before queueing.", status: 409 as const };
+        return { error: "Assign an active connected sender before queueing.", statusCode: 409 as const };
       }
       if (campaign.scheduledAt && campaign.scheduledAt.getTime() > Date.now()) {
-        return { error: "This campaign has a future planned send time. Scheduled dispatch is not enabled yet; queue it after that time or clear the schedule.", status: 409 as const };
+        return { error: "This campaign has a future planned send time. Scheduled dispatch is not enabled yet; queue it after that time or clear the schedule.", statusCode: 409 as const };
       }
       const selectedIds = [...new Set(campaign.recipients.map(item => item.contactId))];
-      if (selectedIds.length === 0) return { error: "Select at least one recipient before queueing.", status: 400 as const };
-      if (selectedIds.length > 5000) return { error: "Campaign exceeds the 5,000-recipient queue limit.", status: 400 as const };
+      if (selectedIds.length === 0) return { error: "Select at least one recipient before queueing.", statusCode: 400 as const };
+      if (selectedIds.length > 5000) return { error: "Campaign exceeds the 5,000-recipient queue limit.", statusCode: 400 as const };
 
       const contacts = await tx.contact.findMany({
         where: {
@@ -58,7 +58,7 @@ export async function POST(_request: Request, route: RouteContext) {
       if (eligible.length !== selectedIds.length) {
         return {
           error: "The audience changed since the draft was saved. Refresh recipients and resolve withdrawn consent or inactive contacts before queueing.",
-          status: 409 as const,
+          statusCode: 409 as const,
           eligibleCount: eligible.length,
           selectedCount: selectedIds.length,
         };
