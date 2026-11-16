@@ -105,6 +105,7 @@ model Organization {
   contacts    Contact[]
   campaigns   Campaign[]
   sessions    QrSession[]
+  qrCredentials QrCredential[]
   auditLogs   AuditLog[]
 }
 
@@ -156,6 +157,7 @@ model Sender {
   archivedAt         DateTime?
   organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sessions           QrSession[]
+  qrCredentials      QrCredential[]
   campaigns          Campaign[]
   messages           Message[]
 
@@ -187,6 +189,34 @@ model QrSession {
   @@index([organizationId, senderId, status])
   @@index([providerSessionId])
   @@index([status, lastSeenAt])
+}
+
+model QrCredential {
+  id              String        @id
+  organizationId  String
+  senderId        String
+  encryptedCreds  String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender          Sender        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  signalKeys      QrSignalKey[]
+
+  @@index([organizationId, senderId])
+}
+
+model QrSignalKey {
+  id             String       @id @default(cuid())
+  credentialId   String
+  keyType        String
+  keyId          String
+  encryptedValue String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  credential     QrCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+  @@unique([credentialId, keyType, keyId])
+  @@index([credentialId, keyType])
 }
 
 model Contact {
