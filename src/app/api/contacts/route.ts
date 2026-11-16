@@ -10,6 +10,7 @@ const contactSelect = {
   id: true, phoneNumber: true, phoneNumberE164: true, firstName: true,
   lastName: true, email: true, company: true, customFields: true,
   status: true, source: true, createdAt: true, updatedAt: true,
+  consents: { take: 1, orderBy: { createdAt: "desc" as const }, select: { channel: true, purpose: true, status: true, createdAt: true } },
 } as const;
 
 export async function GET(request: Request) {
