@@ -67,6 +67,35 @@ Success response: HTTP `204 No Content`.
 
 Revocation must terminate the runtime session and invalidate or delete its credential material.
 
+## Send a queued message
+
+`POST /v1/messages`
+
+The queue worker sends only jobs already persisted by the web application. The runtime validates the organization, sender, recipient, persisted message body, queue lease token and idempotency key before using the sender's connected Baileys socket.
+
+Request:
+```json
+{
+  "organizationId": "org_id",
+  "senderId": "sender_id",
+  "recipient": "+919876543210",
+  "body": "Hello Asha",
+  "idempotencyKey": "campaign:campaign_id:contact:contact_id",
+  "lockToken": "current_queue_lease_token"
+}
+```
+
+Success response:
+```json
+{
+  "accepted": true,
+  "providerMessageId": "provider_message_id",
+  "state": "SUBMITTED"
+}
+```
+
+The runtime persists the provider message identifier on the existing queue row before returning. Repeated requests with the same idempotency key return the stored provider identifier when available. Delivery receipts are not yet reconciled; `SUBMITTED` means the runtime accepted the send operation, not that the recipient's device delivered or read it.
+
 ## Error responses
 
 Use standard HTTP status codes. Return a machine-readable JSON error with a stable code, but never include credentials, QR payloads, cookies, browser storage or other secret material in error messages.
