@@ -35,13 +35,13 @@ failures can be marked terminal immediately.
 `GET /api/campaigns/{campaignId}/messages` returns tenant-scoped aggregate
 counts and a paginated recent message list.
 
+## Dispatch orchestration
+
+`src/lib/queue/dispatch.ts` provides a connector-aware batch dispatcher. It reloads sender state and the recipient's latest consent immediately before dispatch, supplies the stable idempotency key to the connector, and records accepted submissions or classifies retryable/permanent errors. The standalone runner is `npm run queue:worker`; it is gated by `QUEUE_WORKER_ENABLED=true` and refuses to start when no registered connector reports itself configured.
+
 ## Not yet enabled
 
-There is not yet a dispatch worker that calls a live connector. The current
-Meta Cloud and experimental QR adapters are scaffolds/disabled implementations.
-Queueing creates durable jobs; it does not send messages. Delivery webhooks,
-provider-aware retry classification, campaign completion reconciliation and
-scheduled dispatch remain separate milestones.
+The dispatch orchestration and runner are implemented, but there is not yet a live connector that can send. The current Meta Cloud and QR adapters report `configured: false`; the runner deliberately refuses to start while all adapters are disabled. Queueing creates durable jobs; it does not send messages. Delivery webhooks, campaign completion reconciliation and scheduled dispatch remain separate milestones.
 
 ## Database migration
 
