@@ -1,8 +1,9 @@
-export type ConnectorType = "META_CLOUD_API" | "QR_PROVIDER_EXPERIMENTAL";
+export type ConnectorType = "META_CLOUD_API" | "QR_SESSION";
 export type ConnectionState = "PENDING" | "CONNECTING" | "CONNECTED" | "ATTENTION" | "DISCONNECTED" | "RESTRICTED";
 export type MessageState = "QUEUED" | "SUBMITTED" | "SENT" | "DELIVERED" | "READ" | "FAILED";
 
 export interface ConnectorCapabilities {
+  configured: boolean;
   supportsTemplates: boolean;
   supportsMedia: boolean;
   supportsInboundMessages: boolean;
