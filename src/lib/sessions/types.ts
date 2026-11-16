@@ -48,6 +48,8 @@ export interface QrSessionProvider {
     status: QrSessionStatus;
     connectedAt?: string;
     lastSeenAt?: string;
+    pairingPayload?: string;
+    pairingExpiresAt?: string;
     credentialRef?: string;
     errorCode?: string;
     errorMessage?: string;
