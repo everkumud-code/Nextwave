@@ -115,7 +115,7 @@ export async function PATCH(request: Request, route: RouteContext) {
           },
         },
       });
-      return updated;
+      return { ...updated, _count: { recipients: recipientContactIds?.length ?? updated._count.recipients } };
     });
     return NextResponse.json({ campaign });
   } catch (error) {
