@@ -96,10 +96,12 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         providerMessageId: sendResult.providerMessageId,
       });
       if (updated.count) {
-        await prisma.campaignRecipient.updateMany({
-          where: { campaignId: job.campaignId ?? undefined, contactId: contact.id, status: "QUEUED" },
-          data: { status: "SUBMITTED" },
-        });
+        if (job.campaignId) {
+          await prisma.campaignRecipient.updateMany({
+            where: { campaignId: job.campaignId, contactId: contact.id, status: "QUEUED" },
+            data: { status: "SUBMITTED" },
+          });
+        }
         result.submitted += 1;
       }
     } catch (error) {
