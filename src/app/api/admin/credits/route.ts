@@ -23,7 +23,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  if (!(await isPlatformAdmin(context.user.id))) return NextResponse.json({ error: "Platform admin access required." }, { status: 403 });
+  if (!isPlatformAdminUser(context.user)) return NextResponse.json({ error: "Platform admin access required." }, { status: 403 });
 
   const body = await request.json().catch(() => ({}));
   const organizationId = typeof body.organizationId === "string" ? body.organizationId : "";
