@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAuthContext, canManageSenders } from "@/lib/auth";
+import { getAuthContext, canManageSenders, isPlatformAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { hasCurrentMarketingConsent } from "@/lib/campaign-audience-rules";
 import { renderMessageTemplate, findUnsupportedTemplateVariables } from "@/lib/message-template";
@@ -10,13 +10,18 @@ type RouteContext = { params: Promise<{ campaignId: string }> };
 export async function POST(_request: Request, route: RouteContext) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  if (!canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to queue campaigns." }, { status: 403 });
+  const body = await _request.json().catch(() => ({}));
+  const requestedOrganizationId = typeof body.organizationId === "string" ? body.organizationId : null;
+  const isAdmin = isPlatformAdminUser(context.user);
+  if (requestedOrganizationId && !isAdmin) return NextResponse.json({ error: "Platform admin access required." }, { status: 403 });
+  if (!requestedOrganizationId && !canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to queue campaigns." }, { status: 403 });
+  const organizationId = requestedOrganizationId || context.organization.id;
 
   const { campaignId } = await route.params;
   try {
     const result = await prisma.$transaction(async tx => {
       const campaign = await tx.campaign.findFirst({
-        where: { id: campaignId, organizationId: context.organization.id },
+        where: { id: campaignId, organizationId: organizationId },
         select: {
           id: true, name: true, messageBody: true, status: true, scheduledAt: true, senderId: true,
           sender: { select: { id: true, organizationId: true, status: true, archivedAt: true } },
@@ -27,7 +32,7 @@ export async function POST(_request: Request, route: RouteContext) {
       if (campaign.status !== "DRAFT") return { error: "Only draft campaigns can be queued.", statusCode: 409 as const };
       if (!campaign.messageBody?.trim()) return { error: "Add message content before queueing.", statusCode: 400 as const };
       if (findUnsupportedTemplateVariables(campaign.messageBody).length) return { error: "Fix unsupported message variables before queueing.", statusCode: 400 as const };
-      if (!campaign.sender || !campaign.senderId || campaign.sender.organizationId !== context.organization.id || campaign.sender.status !== "CONNECTED" || campaign.sender.archivedAt) {
+      if (!campaign.sender || !campaign.senderId || campaign.sender.organizationId !== organizationId || campaign.sender.status !== "CONNECTED" || campaign.sender.archivedAt) {
         return { error: "Assign an active connected sender before queueing.", statusCode: 409 as const };
       }
       if (campaign.scheduledAt && campaign.scheduledAt.getTime() > Date.now()) {
@@ -39,7 +44,7 @@ export async function POST(_request: Request, route: RouteContext) {
 
       const contacts = await tx.contact.findMany({
         where: {
-          organizationId: context.organization.id,
+          organizationId: organizationId,
           id: { in: selectedIds },
           status: "ACTIVE",
           consents: { some: { channel: "WHATSAPP", purpose: "MARKETING", status: "GRANTED" } },
@@ -65,12 +70,12 @@ export async function POST(_request: Request, route: RouteContext) {
       }
 
       const account = await tx.creditAccount.upsert({
-        where: { organizationId: context.organization.id },
-        create: { organizationId: context.organization.id },
+        where: { organizationId: organizationId },
+        create: { organizationId: organizationId },
         update: {},
       });
       const existingMessageCount = await tx.message.count({
-        where: { organizationId: context.organization.id, campaignId: campaign.id },
+        where: { organizationId: organizationId, campaignId: campaign.id },
       });
       const estimatedNewCount = Math.max(0, eligible.length - existingMessageCount);
       const estimatedChargePaise = estimatedNewCount * account.pricePerMessagePaise;
@@ -85,7 +90,7 @@ export async function POST(_request: Request, route: RouteContext) {
       }
 
       const messages = eligible.map(contact => ({
-        organizationId: context.organization.id,
+        organizationId: organizationId,
         campaignId: campaign.id,
         senderId: campaign.senderId,
         recipientE164: contact.phoneNumberE164,
@@ -111,7 +116,7 @@ export async function POST(_request: Request, route: RouteContext) {
         balanceAfterPaise = account.balancePaise - actualChargePaise;
         await tx.creditTransaction.create({
           data: {
-            organizationId: context.organization.id,
+            organizationId: organizationId,
             accountId: account.id,
             type: "DEBIT",
             amountPaise: actualChargePaise,
@@ -132,7 +137,7 @@ export async function POST(_request: Request, route: RouteContext) {
       await tx.campaign.update({ where: { id: campaign.id }, data: { status: "QUEUED" } });
       await tx.auditLog.create({
         data: {
-          organizationId: context.organization.id,
+          organizationId: organizationId,
           actorUserId: context.user.id,
           action: "campaign.queued",
           resourceType: "Campaign",
