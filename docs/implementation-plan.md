@@ -45,7 +45,7 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] Campaign draft creation with tenant-scoped sender assignment and recipient snapshot
 - [x] Campaign Manager UI with audience/suppression metrics and draft inventory
 - [x] Campaign draft editor with editable recipient selection and connected sender assignment
-- [x] Campaign scheduling metadata with future-time validation (planning only; no dispatch)
+- [x] Campaign scheduling metadata and explicit schedule action with future-time validation\n- [x] Due-campaign scheduler with transactional queue promotion and execution-time consent/sender revalidation
 - [x] Message content editor, supported contact variables and personalisation preview
 - [x] Server-side draft readiness validation for sender, message, audience and current consent state
 - [x] Transactional campaign queue operation with current consent revalidation and idempotent per-recipient message creation
@@ -60,11 +60,11 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] Baileys sent, delivered and read receipt reconciliation into message status
 - [x] Campaign completion aggregation after all jobs reach terminal delivery/failure states
 - [ ] Meta Cloud webhook reconciliation
-- [ ] Campaign approval and scheduled dispatch transition
+- [ ] Campaign approval workflow
 - [x] Durable queue records and organization-scoped idempotency keys
 - [x] Pure QR delivery receipt ordering and terminal-state transition tests
-- [ ] Queue and idempotency integration tests against PostgreSQL
-- [ ] Retry and dead-letter handling with provider-aware failure handling
+- [x] Queue lease, idempotency and scheduled-dispatch integration tests against PostgreSQL
+- [x] Bounded retry and terminal failure handling with provider-aware failure classification
 
 ## Milestone 5 — SaaS operations
 - [ ] Team inbox only for supported, authorized channels
