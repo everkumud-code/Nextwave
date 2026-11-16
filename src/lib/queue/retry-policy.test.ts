@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getRetryDecision } from "./retry-policy";
+import { getRetryDecision, isRetryableConnectorError } from "./retry-policy";
 
 test("uses bounded exponential retry delays", () => {
   const now = new Date("2026-11-16T00:00:00.000Z");
@@ -17,4 +17,11 @@ test("caps retry delay and stops at max attempts", () => {
   const terminal = getRetryDecision({ attemptCount: 5, maxAttempts: 5, errorCode: "INVALID", errorMessage: "bad recipient", now });
   assert.equal(terminal.retry, false);
   assert.equal(terminal.nextAttemptAt, null);
+});
+
+test("classifies permanent and transient connector errors", () => {
+  assert.equal(isRetryableConnectorError("RATE_LIMITED"), true);
+  assert.equal(isRetryableConnectorError("NETWORK_TIMEOUT"), true);
+  assert.equal(isRetryableConnectorError("CONSENT_REVOKED"), false);
+  assert.equal(isRetryableConnectorError("CONNECTOR_NOT_CONFIGURED"), false);
 });
