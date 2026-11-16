@@ -48,8 +48,8 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] Campaign scheduling metadata with future-time validation (planning only; no dispatch)
 - [x] Message content editor, supported contact variables and personalisation preview
 - [x] Server-side draft readiness validation for sender, message, audience and current consent state
-- [ ] Campaign approval, final validation and scheduling/dispatch transition
-- [ ] Queue and idempotency for configured connector capabilities
+- [x] Transactional campaign queue operation with current consent revalidation and idempotent per-recipient message creation\n- [x] Persistent PostgreSQL queue claiming using row locks and SKIP LOCKED leases\n- [x] Bounded exponential retry policy, lease recovery and per-message attempt limits\n- [ ] Connector dispatch worker, provider-aware retry classification and delivery webhook reconciliation\n- [ ] Campaign approval and scheduled dispatch transition
+- [x] Durable queue records and organization-scoped idempotency keys\n- [ ] Queue and idempotency integration tests against PostgreSQL
 - [ ] Retry and dead-letter handling with provider-aware failure handling
 
 ## Milestone 5 — SaaS operations
