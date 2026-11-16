@@ -16,7 +16,7 @@ Before creating jobs, the operation verifies:
 The transaction creates one `Message` row per recipient and moves the campaign
 to `QUEUED`. Idempotency keys are deterministic per campaign/contact pair:
 `campaign:{campaignId}:contact:{contactId}`. A database unique constraint
-prevents duplicate job creation on retries.
+prevents duplicate job creation on retries. Delivery semantics are at-least-once: the stable key and stored provider reference suppress normal retries after an accepted send, but a process crash in the narrow interval between provider acceptance and persistence cannot guarantee exactly-once delivery.
 
 ## Worker primitives
 
