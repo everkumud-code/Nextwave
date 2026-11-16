@@ -78,14 +78,14 @@ export function parseContactXlsx(input: Buffer, maxRows = 5000): ParsedContactRo
   if (input.length < 4 || input.length > 5 * 1024 * 1024) throw new Error("XLSX file must be between 1 byte and 5 MB.");
   const files = readZipEntries(input);
   const workbookXml = files.get("xl/workbook.xml")?.toString("utf8") ?? "";
-  const firstSheet = workbookXml.match(/<sheet\\b[^>]*\\br:id="([^"]+)"/)?.[1];
+  const firstSheet = workbookXml.match(/<sheet\b[^>]*\br:id="([^"]+)"/)?.[1];
   const relationships = files.get("xl/_rels/workbook.xml.rels")?.toString("utf8") ?? "";
   const relationship = firstSheet
-    ? [...relationships.matchAll(/<Relationship\\b([^>]*)\\/>/g)].find(match => match[1].match(/\\bId="([^"]+)"/)?.[1] === firstSheet)
+    ? [...relationships.matchAll(/<Relationship\b([^>]*)\\/>/g)].find(match => match[1].match(/\bId="([^"]+)"/)?.[1] === firstSheet)
     : undefined;
-  const target = relationship?.[1].match(/\\bTarget="([^"]+)"/)?.[1];
+  const target = relationship?.[1].match(/\bTarget="([^"]+)"/)?.[1];
   const sheetPath = target
-    ? (target.startsWith("/") ? target.slice(1) : target.startsWith("xl/") ? target : `xl/${target.replace(/^\\.\\//, "")}`)
+    ? (target.startsWith("/") ? target.slice(1) : target.startsWith("xl/") ? target : `xl/${target.replace(/^\.\\//, "")}`)
     : "xl/worksheets/sheet1.xml";
   const sheet = files.get(sheetPath);
   if (!sheet) throw new Error("The XLSX workbook must contain a readable first worksheet.");
