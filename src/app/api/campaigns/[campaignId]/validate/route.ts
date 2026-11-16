@@ -16,8 +16,8 @@ export async function POST(_request: Request, route: RouteContext) {
   const campaign = await prisma.campaign.findFirst({
     where: { id: campaignId, organizationId: context.organization.id },
     select: {
-      id: true, status: true, name: true, messageBody: true, senderId: true,
-      sender: { select: { status: true } },
+      id: true, status: true, name: true, messageBody: true, senderId: true, scheduledAt: true,
+      sender: { select: { organizationId: true, status: true, archivedAt: true } },
       recipients: { select: { contactId: true } },
     },
   });
@@ -31,8 +31,9 @@ export async function POST(_request: Request, route: RouteContext) {
     const unsupported = findUnsupportedTemplateVariables(campaign.messageBody);
     if (unsupported.length) issues.push(`Unsupported message variables: ${unsupported.join(", ")}.`);
   }
-  if (!campaign.senderId || !campaign.sender) issues.push("Assign a sender to this campaign.");
+  if (!campaign.senderId || !campaign.sender || campaign.sender.organizationId !== context.organization.id || campaign.sender.archivedAt) issues.push("Assign an active sender from this workspace.");
   else if (campaign.sender.status !== "CONNECTED") issues.push("The assigned sender is not connected.");
+  if (campaign.scheduledAt && campaign.scheduledAt.getTime() > Date.now()) issues.push("Scheduled dispatch is not enabled yet; queue this campaign after the planned time or clear the schedule.");
   if (campaign.recipients.length === 0) issues.push("Select at least one recipient.");
 
   const selectedIds = campaign.recipients.map(recipient => recipient.contactId);
@@ -62,7 +63,7 @@ export async function POST(_request: Request, route: RouteContext) {
     issues,
     checks: {
       hasMessage: Boolean(campaign.messageBody?.trim()),
-      senderConnected: campaign.sender?.status === "CONNECTED",
+      senderConnected: campaign.sender?.status === "CONNECTED" && !campaign.sender.archivedAt && campaign.sender.organizationId === context.organization.id,
       selectedRecipients: selectedIds.length,
       currentlyEligibleRecipients: eligibleSelected,
       suppressedRecipients: suppressed,
