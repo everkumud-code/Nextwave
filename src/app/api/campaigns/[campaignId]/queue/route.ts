@@ -100,22 +100,26 @@ export async function POST(_request: Request, route: RouteContext) {
         chargePaise: account.pricePerMessagePaise,
       }));
       const created = await tx.message.createMany({ data: messages, skipDuplicates: true });
-      if (estimatedChargePaise > 0) {
-        await tx.creditAccount.update({
-          where: { id: account.id },
-          data: { balancePaise: { decrement: estimatedChargePaise } },
+      const actualChargePaise = created.count * account.pricePerMessagePaise;
+      let balanceAfterPaise = account.balancePaise;
+      if (actualChargePaise > 0) {
+        const charged = await tx.creditAccount.updateMany({
+          where: { id: account.id, balancePaise: { gte: actualChargePaise } },
+          data: { balancePaise: { decrement: actualChargePaise } },
         });
+        if (!charged.count) throw new Error("INSUFFICIENT_PREPAID_CREDIT");
+        balanceAfterPaise = account.balancePaise - actualChargePaise;
         await tx.creditTransaction.create({
           data: {
             organizationId: context.organization.id,
             accountId: account.id,
             type: "DEBIT",
-            amountPaise: estimatedChargePaise,
-            balanceAfterPaise: account.balancePaise - estimatedChargePaise,
+            amountPaise: actualChargePaise,
+            balanceAfterPaise,
             pricePerMessagePaise: account.pricePerMessagePaise,
-            messageCount: estimatedNewCount,
+            messageCount: created.count,
             reference: `campaign:${campaign.id}`,
-            description: `Prepaid charge for ${estimatedNewCount} queued campaign messages`,
+            description: `Prepaid charge for ${created.count} queued campaign messages`,
             actorUserId: context.user.id,
           },
         });
@@ -133,15 +137,16 @@ export async function POST(_request: Request, route: RouteContext) {
           action: "campaign.queued",
           resourceType: "Campaign",
           resourceId: campaign.id,
-          metadata: { recipientCount: eligible.length, createdMessageCount: created.count, senderId: campaign.senderId, chargedPaise: estimatedChargePaise, pricePerMessagePaise: account.pricePerMessagePaise },
+          metadata: { recipientCount: eligible.length, createdMessageCount: created.count, senderId: campaign.senderId, chargedPaise: actualChargePaise, pricePerMessagePaise: account.pricePerMessagePaise },
         },
       });
-      return { campaignId: campaign.id, recipientCount: eligible.length, queuedCount: created.count, chargedPaise: estimatedChargePaise, balanceAfterPaise: account.balancePaise - estimatedChargePaise, pricePerMessagePaise: account.pricePerMessagePaise, status: "QUEUED" as const };
+      return { campaignId: campaign.id, recipientCount: eligible.length, queuedCount: created.count, chargedPaise: actualChargePaise, balanceAfterPaise, pricePerMessagePaise: account.pricePerMessagePaise, status: "QUEUED" as const };
     }, { isolationLevel: "Serializable" });
 
     if ("error" in result) return NextResponse.json(result, { status: result.statusCode });
     return NextResponse.json({ result, message: "Campaign jobs are durably queued. Message delivery requires an enabled dispatch worker." }, { status: 202 });
   } catch (error) {
+    if (error instanceof Error && error.message === "INSUFFICIENT_PREPAID_CREDIT") return NextResponse.json({ error: "Insufficient prepaid credits. Please top up before queueing this campaign." }, { status: 402 });
     console.error("Campaign queue operation failed", error);
     return NextResponse.json({ error: "Unable to queue campaign. Retry the operation; message creation is idempotent." }, { status: 500 });
   }
