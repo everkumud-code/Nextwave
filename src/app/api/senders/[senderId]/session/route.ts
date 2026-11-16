@@ -25,6 +25,7 @@ function errorResponse(error: unknown) {
 export async function GET(_request: Request, route: RouteContext) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  if (!canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to view sender pairing details." }, { status: 403 });
   const { senderId } = await route.params;
   const sender = await getSender(senderId, context.organization.id);
   if (!sender) return NextResponse.json({ error: "Sender not found." }, { status: 404 });
@@ -71,13 +72,21 @@ export async function POST(_request: Request, route: RouteContext) {
           senderId: sender.id,
           ownership: sender.ownership,
         });
+    const senderStatus = session.status === "CONNECTED" ? "CONNECTED" : ["ERROR", "REVOKED", "DISCONNECTED"].includes(session.status) ? "DISCONNECTED" : "PENDING";
     await prisma.$transaction([
-      prisma.sender.updateMany({ where: { id: senderId, organizationId: context.organization.id }, data: { status: "PENDING" } }),
+      prisma.sender.updateMany({
+        where: { id: senderId, organizationId: context.organization.id },
+        data: {
+          status: senderStatus,
+          lastConnectedAt: session.connectedAt ? new Date(session.connectedAt) : undefined,
+          lastSeenAt: session.lastSeenAt ? new Date(session.lastSeenAt) : undefined,
+        },
+      }),
       prisma.auditLog.create({
         data: {
           organizationId: context.organization.id,
           actorUserId: context.user.id,
-          action: "sender.qr_session_started",
+          action: existing ? "sender.qr_session_refreshed" : "sender.qr_session_started",
           resourceType: "QrSession",
           resourceId: session.id,
           metadata: { senderId },
