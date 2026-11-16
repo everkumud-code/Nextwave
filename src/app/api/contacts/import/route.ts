@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
-import { parseContactCsv } from "@/lib/contact-import";
+import { parseContactCsv, type ParsedContactRow } from "@/lib/contact-import";
 import { parseContactXlsx } from "@/lib/contact-xlsx";
 
 export const runtime = "nodejs";
@@ -14,7 +14,8 @@ export async function POST(request: Request) {
   if (!canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to import contacts." }, { status: 403 });
 
   try {
-    let rows;
+    let rows: ParsedContactRow[];
+    let importSource = "CSV_IMPORT";
     let previewOnly = true;
     const contentType = request.headers.get("content-type") ?? "";
     if (contentType.includes("multipart/form-data")) {
@@ -24,10 +25,12 @@ export async function POST(request: Request) {
       if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") return NextResponse.json({ error: "Select a CSV or XLSX file." }, { status: 400 });
       const name = file.name.toLowerCase();
       if (name.endsWith(".xlsx")) {
+        importSource = "XLSX_IMPORT";
         if (file.size > MAX_XLSX_BYTES) return NextResponse.json({ error: "XLSX file must be 5 MB or smaller." }, { status: 413 });
         rows = parseContactXlsx(Buffer.from(await file.arrayBuffer()));
       } else if (name.endsWith(".csv")) {
         if (file.size > MAX_CSV_BYTES) return NextResponse.json({ error: "CSV file must be 2 MB or smaller." }, { status: 413 });
+        importSource = "CSV_IMPORT";
         rows = parseContactCsv(await file.text());
       } else return NextResponse.json({ error: "Only .csv and .xlsx files are supported." }, { status: 400 });
     } else {
@@ -71,10 +74,10 @@ export async function POST(request: Request) {
               lastName: row.lastName,
               email: row.email,
               company: row.company,
-              source: "CSV_IMPORT",
+              source: importSource,
               ...(row.whatsappConsent ? { consents: { create: {
                 channel: "WHATSAPP", purpose: "MARKETING", status: "GRANTED",
-                source: "CSV_IMPORT", grantedAt: new Date(),
+                source: importSource, grantedAt: new Date(),
               } } } : {}),
             },
             select: { id: true },
@@ -86,7 +89,7 @@ export async function POST(request: Request) {
               action: "contact.imported",
               resourceType: "Contact",
               resourceId: contact.id,
-              metadata: { source: "CSV_IMPORT", consentRecorded: row.whatsappConsent, csvLine: row.line },
+              metadata: { source: importSource, consentRecorded: row.whatsappConsent, sourceLine: row.line },
             },
           });
         });
@@ -97,10 +100,10 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ imported, skipped: preview.length - imported, message: `${imported} contacts imported successfully.` });
   } catch (error) {
-    if (error instanceof Error && (error.message.startsWith("CSV") || error.message.includes("column is required") || error.message.includes("limited to"))) {
+    if (error instanceof Error && (error.message.startsWith("CSV") || error.message.startsWith("XLSX") || error.message.startsWith("The XLSX") || error.message.includes("column is required") || error.message.includes("limited to"))) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    console.error("Contact CSV import failed", error);
+    console.error("Contact file import failed", error);
     return NextResponse.json({ error: "Unable to import contacts." }, { status: 500 });
   }
 }
