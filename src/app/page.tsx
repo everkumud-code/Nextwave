@@ -1,5 +1,6 @@
-import Link from "next/link";
 "use client";
+
+import Link from "next/link";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { SenderConnection } from "@/components/sender-connection";
