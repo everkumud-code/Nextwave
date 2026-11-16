@@ -36,7 +36,14 @@ export async function GET(_request: Request, route: RouteContext) {
     where: { organizationId: context.organization.id, senderId, activeKey: `${context.organization.id}:${senderId}` },
     orderBy: { updatedAt: "desc" },
   });
-  if (!current) return NextResponse.json({ session: null });
+  if (!current) {
+    const latest = await prisma.qrSession.findFirst({
+      where: { organizationId: context.organization.id, senderId },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, status: true, connectedAt: true, lastSeenAt: true, lastErrorMessage: true },
+    });
+    return NextResponse.json({ session: latest });
+  }
 
   try {
     const session = await getQrSessionManager().refresh(context.organization.id, current.id);
@@ -94,7 +101,7 @@ export async function POST(_request: Request, route: RouteContext) {
         },
       }),
     ]);
-    return NextResponse.json({ session }, { status: 201 });
+    return NextResponse.json({ session }, { status: existing ? 200 : 201 });
   } catch (error) {
     return errorResponse(error);
   }
