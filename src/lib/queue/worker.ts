@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getRetryDecision } from "./retry-policy";
+import { applyPendingProviderReceipts } from "./provider-receipts";
 
 export type ClaimedMessage = {
   id: string;
@@ -67,17 +68,33 @@ export async function markMessageSubmitted(input: {
   lockToken: string;
   providerMessageId?: string;
 }) {
-  return prisma.message.updateMany({
-    where: { id: input.messageId, status: "QUEUED", lockToken: input.lockToken },
-    data: {
-      status: "SUBMITTED",
-      providerMessageId: input.providerMessageId ?? null,
-      submittedAt: new Date(),
-      lockedAt: null,
-      lockToken: null,
-      errorCode: null,
-      errorMessage: null,
-    },
+  return prisma.$transaction(async tx => {
+    const updated = await tx.message.updateMany({
+      where: { id: input.messageId, status: "QUEUED", lockToken: input.lockToken },
+      data: {
+        status: "SUBMITTED",
+        providerMessageId: input.providerMessageId ?? null,
+        submittedAt: new Date(),
+        lockedAt: null,
+        lockToken: null,
+        errorCode: null,
+        errorMessage: null,
+      },
+    });
+    if (updated.count && input.providerMessageId) {
+      const message = await tx.message.findUnique({
+        where: { id: input.messageId },
+        select: { organizationId: true, senderId: true },
+      });
+      if (message?.senderId) {
+        await applyPendingProviderReceipts(tx, {
+          organizationId: message.organizationId,
+          senderId: message.senderId,
+          providerMessageId: input.providerMessageId,
+        });
+      }
+    }
+    return updated;
   });
 }
 
