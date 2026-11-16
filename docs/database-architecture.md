@@ -11,13 +11,13 @@
 
 - Identity: User, Membership, Organization
 - Sender operations: Sender, QrSession
-- Audience: Contact, ConsentRecord
+- Audience: Contact, ConsentRecord, ContactGroup, ContactGroupMember
 - Campaign operations: Campaign, CampaignRecipient, Message
 - Governance: AuditLog
 
 ## Tenant isolation
 
-Every customer-owned data model includes an `organizationId` directly or is reachable through an organization-owned parent. Every repository/service method must derive the organization ID from the authenticated server-side membership, never trust a client-provided organization ID by itself.
+Every customer-owned data model includes an `organizationId` directly or is reachable through an organization-owned parent. Contact groups are organization-scoped, and membership is only writable after validating that every selected contact belongs to the authenticated organization. Every repository/service method must derive the organization ID from the authenticated server-side membership, never trust a client-provided organization ID by itself.
 
 Important application-level invariants:
 - A Sender's organization must match the organization used to create its QrSession.
@@ -57,3 +57,13 @@ The database stores session metadata and a reference to encrypted credentials. I
 - The encryption key is supplied only to the QR runtime through `QR_CREDENTIAL_ENCRYPTION_KEY`.
 - Pairing QR payloads are transient and are not persisted.
 - Deleting a credential cascades to its Signal key records; deleting a sender or organization also removes associated credentials.
+
+
+## Contact import and groups
+
+- CSV import accepts up to 5,000 rows and 2 MB.
+- XLSX import reads the first worksheet, shared strings and inline strings, up to 5,000 rows and 5 MB. Archive expansion is bounded during parsing.
+- Both formats share phone normalization, duplicate detection, row-level validation and explicit affirmative WhatsApp consent capture.
+- Imported contacts record their source as `CSV_IMPORT` or `XLSX_IMPORT`.
+- Contact groups are tenant-scoped. Membership is unique per group/contact pair, and deleting a group never deletes its contacts.
+- Campaign recipient selection can add members from a saved group, then filters to contacts currently present in the eligible audience.
