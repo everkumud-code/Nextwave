@@ -26,9 +26,10 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] Internal QR session service HTTP adapter and API contract
 - [x] Authenticated sender QR session API (start, refresh, status, revoke)
 - [x] Live QR pairing panel with QR rendering, expiry and connection polling
-- [ ] Deployable QR runtime service with persistent credential storage
-- [ ] Runtime reconnect handling, health checks and integration tests
-- [ ] Sender status reconciliation worker
+- [x] Deployable QR runtime service with AES-256-GCM encrypted credential and Signal-key storage
+- [x] Bounded reconnect handling and liveness/readiness endpoints
+- [ ] Runtime integration tests
+- [x] Sender status reconciliation from runtime lifecycle events
 - [ ] Campaign queue and dispatch adapter using configured connector capabilities
 
 ## Milestone 4 — CRM and campaign planning
