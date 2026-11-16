@@ -24,8 +24,6 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [x] Self-hosted QR session lifecycle contracts and manager
 - [x] PostgreSQL-backed QR session repository
 - [x] Internal QR session service HTTP adapter and API contract
-- [x] Authenticated sender QR session API (start, status refresh, revoke)
-- [x] Live QR pairing panel with QR rendering, expiry and connection polling
 - [x] Authenticated sender QR session API (start, refresh, status, revoke)
 - [x] Live QR pairing panel with QR rendering, expiry and connection polling
 - [ ] Deployable QR runtime service with persistent credential storage
@@ -38,8 +36,8 @@ NextWave uses a provider-neutral SaaS core. The self-hosted QR session connector
 - [ ] Consent ledger: source, purpose, timestamp, notice version and withdrawal
 - [ ] Suppression and opt-out enforcement
 - [ ] Campaign builder, audience preview and scheduling metadata
-- [ ] Queue and idempotency for approved transports only
-- [ ] Retry and dead-letter handling without bypassing provider restrictions
+- [ ] Queue and idempotency for configured connector capabilities
+- [ ] Retry and dead-letter handling with provider-aware failure handling
 
 ## Milestone 5 — SaaS operations
 - [ ] Team inbox only for supported, authorized channels
