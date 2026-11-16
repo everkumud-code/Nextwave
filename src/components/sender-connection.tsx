@@ -73,8 +73,8 @@ export function SenderConnection({ senderId, senderName, disabled }: Props) {
     finally { setBusy(false); }
   }
 
-  const active = session && ["CREATED", "QR_PENDING", "PAIRING", "CONNECTED", "RECONNECTING"].includes(session.status) && !(expired && ["QR_PENDING", "PAIRING"].includes(session.status));
   const expired = session?.pairingExpiresAt ? new Date(session.pairingExpiresAt).getTime() <= now : false;
+  const active = session && ["CREATED", "QR_PENDING", "PAIRING", "CONNECTED", "RECONNECTING"].includes(session.status) && !(expired && ["QR_PENDING", "PAIRING"].includes(session.status));
 
   return <>
     <button disabled={disabled} onClick={() => setOpen(true)} title="Connect sender" className="rounded-lg p-2 text-slate-400 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-40"><QrCode size={15}/></button>
