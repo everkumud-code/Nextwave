@@ -22,7 +22,10 @@ The user has rejected WhatsApp Cloud API for the current scope. Keep its scaffol
 ## Milestone 3 — Sender management
 - [ ] Sender inventory and ownership model
 - [ ] Connector registry and capability discovery
-- [ ] Self-hosted QR session-lab lifecycle model (metadata and test-only status)
+- [x] Self-hosted QR session lifecycle contracts and manager
+- [x] PostgreSQL-backed QR session repository
+- [x] Internal QR session service HTTP adapter and API contract
+- [ ] Self-hosted QR runtime implementation and integration tests
 - [ ] Feature flag and server-side enforcement that keeps QR lab disabled
 - [ ] No QR-based campaign dispatch
 - [ ] Approved production connector only after provider/legal/security approval
