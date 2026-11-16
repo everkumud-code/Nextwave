@@ -26,7 +26,7 @@ export class ExperimentalQrProviderAdapter implements MessagingConnector {
       configured: runtimeConfig().configured,
       supportsTemplates: false,
       supportsMedia: false,
-      supportsInboundMessages: true,
+      supportsInboundMessages: false,
       supportsDeliveryEvents: false,
       requiresProviderApproval: false,
       experimental: true,
