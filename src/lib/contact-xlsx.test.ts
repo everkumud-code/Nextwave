@@ -62,8 +62,10 @@ test("XLSX contact parser reads shared strings, inline strings and consent flags
     <row r="2"><c r="A2" t="s"><v>6</v></c><c r="B2" t="s"><v>7</v></c><c r="C2" t="s"><v>8</v></c><c r="D2" t="s"><v>9</v></c><c r="E2" t="s"><v>10</v></c><c r="F2" t="s"><v>11</v></c></row>
   </sheetData></worksheet>`;
   const workbook = makeZip({
+    "xl/workbook.xml": `<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Contacts" sheetId="2" r:id="rId1"/></sheets></workbook>`,
+    "xl/_rels/workbook.xml.rels": `<Relationships><Relationship Id="rId1" Target="worksheets/sheet2.xml"/></Relationships>`,
     "xl/sharedStrings.xml": sharedXml,
-    "xl/worksheets/sheet1.xml": sheet,
+    "xl/worksheets/sheet2.xml": sheet,
   });
   const [row] = parseContactXlsx(workbook);
   assert.equal(row.phoneNumberE164, "+919876543210");
