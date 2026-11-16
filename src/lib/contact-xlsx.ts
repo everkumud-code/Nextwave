@@ -11,6 +11,7 @@ function readZipEntries(buffer: Buffer): Map<string, Buffer> {
   }
   if (eocd < 0) throw new Error("This file is not a valid XLSX workbook.");
   const count = buffer.readUInt16LE(eocd + 10);
+  if (count > 1000) throw new Error("The XLSX workbook contains too many archive entries.");
   let cursor = buffer.readUInt32LE(eocd + 16);
   const entries: ZipEntry[] = [];
   for (let i = 0; i < count; i++) {
@@ -30,7 +31,11 @@ function readZipEntries(buffer: Buffer): Map<string, Buffer> {
   }
 
   const files = new Map<string, Buffer>();
+  let totalUncompressed = 0;
   for (const entry of entries) {
+    totalUncompressed += entry.uncompressedSize;
+    if (totalUncompressed > 20 * 1024 * 1024) throw new Error("The XLSX workbook expands beyond the 20 MB processing limit.");
+    if (entry.uncompressedSize > 10 * 1024 * 1024) throw new Error("An XLSX workbook entry exceeds the processing limit.");
     if (entry.name.startsWith("xl/") && !entry.name.endsWith("/")) {
       const offset = entry.localOffset;
       if (offset + 30 > buffer.length || buffer.readUInt32LE(offset) !== 0x04034b50) {
