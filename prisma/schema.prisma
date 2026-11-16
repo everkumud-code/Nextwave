@@ -1,0 +1,312 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MANAGER
+  AGENT
+  VIEWER
+}
+
+enum SenderOwnership {
+  CUSTOMER
+  PLATFORM
+}
+
+enum SenderConnector {
+  QR_SESSION
+  META_CLOUD_API
+  OTHER
+}
+
+enum SenderStatus {
+  PENDING
+  CONNECTED
+  ATTENTION
+  DISCONNECTED
+  RESTRICTED
+  ARCHIVED
+}
+
+enum QrSessionStatus {
+  CREATED
+  QR_PENDING
+  PAIRING
+  CONNECTED
+  RECONNECTING
+  DISCONNECTED
+  REVOKED
+  ERROR
+}
+
+enum ContactStatus {
+  ACTIVE
+  UNSUBSCRIBED
+  INVALID
+  BLOCKED
+}
+
+enum ConsentStatus {
+  GRANTED
+  WITHDRAWN
+  UNKNOWN
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  QUEUED
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum MessageStatus {
+  QUEUED
+  SUBMITTED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  CANCELLED
+}
+
+enum AuditActorType {
+  USER
+  SYSTEM
+  API
+}
+
+model Organization {
+  id          String             @id @default(cuid())
+  name        String
+  slug        String             @unique
+  status      OrganizationStatus @default(ACTIVE)
+  timezone    String             @default("Asia/Kolkata")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  memberships Membership[]
+  senders     Sender[]
+  contacts    Contact[]
+  campaigns   Campaign[]
+  sessions    QrSession[]
+  auditLogs   AuditLog[]
+}
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  name          String?
+  passwordHash  String?
+  emailVerified DateTime?
+  image         String?
+  isPlatformAdmin Boolean    @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  memberships   Membership[]
+  auditLogs     AuditLog[]
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  role           MemberRole   @default(AGENT)
+  invitedAt      DateTime?
+  joinedAt       DateTime?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId, role])
+  @@index([organizationId, role])
+}
+
+model Sender {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  displayName        String
+  phoneNumber        String
+  phoneNumberE164    String
+  ownership          SenderOwnership @default(CUSTOMER)
+  connector          SenderConnector
+  status             SenderStatus    @default(PENDING)
+  providerAccountRef String?
+  assignedLabel      String?
+  lastConnectedAt    DateTime?
+  lastSeenAt         DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  archivedAt         DateTime?
+  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sessions           QrSession[]
+  campaigns          Campaign[]
+  messages           Message[]
+
+  @@unique([organizationId, phoneNumberE164])
+  @@index([organizationId, status])
+  @@index([organizationId, ownership])
+  @@index([connector, status])
+}
+
+model QrSession {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  senderId            String
+  ownership          SenderOwnership
+  status             QrSessionStatus @default(CREATED)
+  providerSessionId  String?
+  credentialRef      String?
+  connectedAt        DateTime?
+  lastSeenAt         DateTime?
+  lastErrorCode      String?
+  lastErrorMessage   String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  revokedAt          DateTime?
+  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender             Sender          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, senderId, status])
+  @@index([providerSessionId])
+  @@index([status, lastSeenAt])
+}
+
+model Contact {
+  id              String        @id @default(cuid())
+  organizationId  String
+  phoneNumber     String
+  phoneNumberE164 String
+  firstName       String?
+  lastName        String?
+  email           String?
+  company         String?
+  customFields    Json?
+  status          ContactStatus @default(ACTIVE)
+  source          String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  consents        ConsentRecord[]
+  campaignTargets CampaignRecipient[]
+
+  @@unique([organizationId, phoneNumberE164])
+  @@index([organizationId, status])
+  @@index([organizationId, email])
+}
+
+model ConsentRecord {
+  id              String        @id @default(cuid())
+  contactId       String
+  channel         String
+  purpose         String
+  status          ConsentStatus @default(UNKNOWN)
+  source          String?
+  evidenceRef     String?
+  noticeVersion   String?
+  grantedAt       DateTime?
+  withdrawnAt    DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  contact         Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, channel, purpose, status])
+}
+
+model Campaign {
+  id              String         @id @default(cuid())
+  organizationId  String
+  senderId        String?
+  name            String
+  description     String?
+  status          CampaignStatus @default(DRAFT)
+  channel         String         @default("WHATSAPP")
+  scheduledAt     DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender          Sender?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  recipients      CampaignRecipient[]
+  messages        Message[]
+
+  @@index([organizationId, status, scheduledAt])
+  @@index([senderId, status])
+}
+
+model CampaignRecipient {
+  id          String    @id @default(cuid())
+  campaignId  String
+  contactId   String
+  status      String    @default("PENDING")
+  createdAt   DateTime  @default(now())
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId, status])
+  @@index([contactId])
+}
+
+model Message {
+  id                String        @id @default(cuid())
+  organizationId    String
+  campaignId        String?
+  senderId          String?
+  recipientE164     String
+  body              String?
+  status            MessageStatus @default(QUEUED)
+  idempotencyKey    String
+  providerMessageId String?
+  errorCode         String?
+  errorMessage      String?
+  submittedAt       DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  campaign          Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  sender            Sender?       @relation(fields: [senderId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+  @@index([campaignId, status])
+  @@index([providerMessageId])
+}
+
+model AuditLog {
+  id              String         @id @default(cuid())
+  organizationId  String
+  actorUserId     String?
+  actorType       AuditActorType @default(USER)
+  action          String
+  resourceType    String
+  resourceId      String?
+  ipAddress       String?
+  userAgent       String?
+  metadata        Json?
+  createdAt       DateTime       @default(now())
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor           User?          @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([actorUserId, createdAt])
+}
