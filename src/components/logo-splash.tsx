@@ -6,7 +6,7 @@ import { BrandLogo } from "./brand-logo";
 /**
  * On opening, the NextWave logo rolls in like a wave of the sea: the logo ripples on the water and then settles, while two
  * waves wash across the bottom of the screen. Shown once per browser session (not on every page), skipped for people who
- * ask for reduced motion, and gone after about three seconds. Finite animation only; nothing keeps running.
+ * ask for reduced motion, and gone after exactly three seconds. Finite animation only; nothing keeps running.
  */
 export function LogoSplash() {
   const [phase, setPhase] = useState<"on" | "out" | "off">("on");
@@ -18,8 +18,8 @@ export function LogoSplash() {
       sessionStorage.setItem("nw-splash", "1");
     } catch { /* no storage: show it once per page load */ }
     if (seen || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setPhase("off"); return; }
-    const out = window.setTimeout(() => setPhase("out"), 2700);
-    const off = window.setTimeout(() => setPhase("off"), 3400);
+    const out = window.setTimeout(() => setPhase("out"), 2400);
+    const off = window.setTimeout(() => setPhase("off"), 3000);
     return () => { window.clearTimeout(out); window.clearTimeout(off); };
   }, []);
 
