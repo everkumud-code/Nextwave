@@ -65,6 +65,7 @@ services:
       - nextwave
 
   queue-worker:
+    profiles: ["worker"]   # not started by a plain `up`; start it by name only after the controlled sender test
     build:
       context: .
       dockerfile: Dockerfile

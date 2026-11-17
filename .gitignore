@@ -13,3 +13,7 @@ coverage
 
 # QR runtime build output
 services/qr-runtime/dist/
+
+# generated
+next-env.d.ts
+*.tsbuildinfo

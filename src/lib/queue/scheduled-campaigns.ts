@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { hasCurrentMarketingConsent } from "@/lib/campaign-audience-rules";
-import { findUnsupportedTemplateVariables, renderMessageTemplate } from "@/lib/message-template";
+import { findUnsupportedTemplateVariables } from "@/lib/message-template";
+import { enqueueCampaignMessages } from "./enqueue";
 
 export type ScheduledCampaignResult =
   | { campaignId: string; status: "QUEUED"; recipientCount: number; queuedCount: number }
@@ -78,21 +79,34 @@ export async function queueDueScheduledCampaign(
   });
   if (!claimed.count) return { campaignId, status: "SKIPPED" };
 
-  const messages = eligible.map(contact => ({
+  const outcome = await enqueueCampaignMessages(tx, {
     organizationId: campaign.organizationId,
-    campaignId: campaign.id,
-    senderId: campaign.senderId!,
-    recipientE164: contact.phoneNumberE164,
-    body: renderMessageTemplate(campaign.messageBody!, {
-      firstName: contact.firstName,
-      lastName: contact.lastName,
-      company: contact.company,
-      phoneNumber: contact.phoneNumberE164,
-    }),
-    status: "QUEUED" as const,
-    idempotencyKey: `campaign:${campaign.id}:contact:${contact.id}`,
-  }));
-  const created = await tx.message.createMany({ data: messages, skipDuplicates: true });
+    campaign: { id: campaign.id, messageBody: campaign.messageBody!, senderId: campaign.senderId! },
+    eligible,
+    actorUserId: null,
+    now,
+  });
+  if (!outcome.ok) {
+    // not enough prepaid credit at the planned time: nothing is sent and nobody is charged
+    const failed = await tx.campaign.updateMany({
+      where: { id: campaign.id, organizationId: campaign.organizationId, status: "QUEUED" },
+      data: { status: "FAILED", completedAt: now },
+    });
+    if (failed.count) {
+      await tx.auditLog.create({
+        data: {
+          organizationId: campaign.organizationId,
+          actorType: "SYSTEM",
+          action: "campaign.schedule_blocked",
+          resourceType: "Campaign",
+          resourceId: campaign.id,
+          metadata: { reason: "Insufficient prepaid credit at the scheduled time.", balancePaise: outcome.balancePaise, requiredPaise: outcome.requiredPaise },
+        },
+      });
+    }
+    return { campaignId, status: "FAILED", reason: "Insufficient prepaid credit at the scheduled time." };
+  }
+  const created = { count: outcome.queuedCount };
   await tx.campaignRecipient.updateMany({
     where: { campaignId: campaign.id, status: "PENDING" },
     data: { status: "QUEUED" },
@@ -104,7 +118,7 @@ export async function queueDueScheduledCampaign(
       action: "campaign.scheduled_queued",
       resourceType: "Campaign",
       resourceId: campaign.id,
-      metadata: { recipientCount: eligible.length, createdMessageCount: created.count, senderId: campaign.senderId },
+      metadata: { recipientCount: eligible.length, createdMessageCount: created.count, senderId: campaign.senderId, chargedPaise: outcome.chargedPaise, pricePerMessagePaise: outcome.pricePerMessagePaise },
     },
   });
   return { campaignId, status: "QUEUED", recipientCount: eligible.length, queuedCount: created.count };

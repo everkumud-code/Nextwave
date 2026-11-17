@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     ...(status && ["ACTIVE", "UNSUBSCRIBED", "INVALID", "BLOCKED"].includes(status) ? { status: status as "ACTIVE" | "UNSUBSCRIBED" | "INVALID" | "BLOCKED" } : {}),
     ...(query ? {
       OR: [
-        { phoneNumberE164: { contains: query.replace(/\\s/g, "") } },
+        { phoneNumberE164: { contains: query.replace(/\s/g, "") } },
         { firstName: { contains: query, mode: "insensitive" as const } },
         { lastName: { contains: query, mode: "insensitive" as const } },
         { email: { contains: query, mode: "insensitive" as const } },

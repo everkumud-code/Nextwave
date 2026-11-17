@@ -8,8 +8,8 @@ const connectors = ["QR_SESSION", "META_CLOUD_API", "OTHER"] as const;
 const ownerships = ["CUSTOMER", "PLATFORM"] as const;
 
 function normalizeE164(value: string) {
-  const compact = value.replace(/[\\s().-]/g, "");
-  return /^\\+[1-9]\\d{7,14}$/.test(compact) ? compact : null;
+  const compact = value.replace(/[\s().-]/g, "");
+  return /^\+[1-9]\d{7,14}$/.test(compact) ? compact : null;
 }
 
 export async function GET() {

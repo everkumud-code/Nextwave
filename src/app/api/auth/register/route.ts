@@ -6,7 +6,7 @@ import { assertAuthConfigured, createSession } from "@/lib/auth";
 export const runtime = "nodejs";
 
 function slugify(value: string) {
-  return value.toLowerCase().normalize("NFKD").replace(/[\\u0300-\\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36);
+  return value.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36);
 }
 
 export async function POST(request: Request) {
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const password = typeof body.password === "string" ? body.password : "";
 
-    if (!name || !organizationName || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || password.length < 10 || password.length > 128) {
+    if (!name || !organizationName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 10 || password.length > 128) {
       return NextResponse.json({ error: "Enter your name, workspace, a valid email and a password of at least 10 characters." }, { status: 400 });
     }
 

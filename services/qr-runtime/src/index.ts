@@ -12,6 +12,7 @@ import { Boom } from "@hapi/boom";
 import pino from "pino";
 import { PrismaClient } from "@prisma/client";
 import { highestReceiptStatus, receiptCanAdvance, type QrDeliveryStatus } from "./receipt-status.js";
+import { e164FromJid, isOptOutText, recordOptOut } from "./optout.js";
 
 const prisma = new PrismaClient();
 const logger = pino({ level: process.env.QR_LOG_LEVEL || "silent" });
@@ -276,10 +277,22 @@ async function startSocket(session: RuntimeSession) {
     }
   });
 
-  socket.ev.on("messages.upsert", () => {
+  socket.ev.on("messages.upsert", (upsert) => {
     if (generation !== session.generation || session.stopping) return;
     session.lastSeenAt = new Date().toISOString();
     void persistStatus(session).catch(() => undefined);
+    // A contact who replies with an opt-out word (STOP, UNSUBSCRIBE, ...) withdraws marketing consent at once.
+    if (upsert.type !== "notify") return;
+    for (const message of upsert.messages) {
+      if (message.key.fromMe) continue;
+      const text = message.message?.conversation ?? message.message?.extendedTextMessage?.text;
+      if (!isOptOutText(text)) continue;
+      const recipientE164 = e164FromJid(message.key.remoteJid);
+      if (!recipientE164) continue;
+      void recordOptOut(prisma, { organizationId: session.organizationId, recipientE164, evidenceRef: message.key.id ?? null })
+        .then((result) => { if (result.applied) logger.info({ organizationId: session.organizationId, cancelledMessages: result.cancelledMessages }, "Contact opted out by reply"); })
+        .catch((error) => logger.error({ error }, "Could not record an opt-out reply"));
+    }
   });
 }
 

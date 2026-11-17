@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders, isPlatformAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { hasCurrentMarketingConsent } from "@/lib/campaign-audience-rules";
-import { renderMessageTemplate, findUnsupportedTemplateVariables } from "@/lib/message-template";
+import { findUnsupportedTemplateVariables } from "@/lib/message-template";
+import { enqueueCampaignMessages } from "@/lib/queue/enqueue";
 
 export const runtime = "nodejs";
 type RouteContext = { params: Promise<{ campaignId: string }> };
@@ -69,94 +70,25 @@ export async function POST(_request: Request, route: RouteContext) {
         };
       }
 
-      const account = await tx.creditAccount.upsert({
-        where: { organizationId: organizationId },
-        create: { organizationId: organizationId },
-        update: {},
+      const outcome = await enqueueCampaignMessages(tx, {
+        organizationId,
+        campaign: { id: campaign.id, messageBody: campaign.messageBody!, senderId: campaign.senderId! },
+        eligible,
+        actorUserId: context.user.id,
       });
-      const existingMessageCount = await tx.message.count({
-        where: { organizationId: organizationId, campaignId: campaign.id },
-      });
-      const estimatedNewCount = Math.max(0, eligible.length - existingMessageCount);
-      const estimatedChargePaise = estimatedNewCount * account.pricePerMessagePaise;
-      if (!Number.isSafeInteger(estimatedChargePaise) || account.balancePaise < estimatedChargePaise) {
+      if (!outcome.ok) {
         return {
           error: "Insufficient prepaid credits. Please contact your account administrator to top up before queueing this campaign.",
           statusCode: 402 as const,
-          balancePaise: account.balancePaise,
-          requiredPaise: estimatedChargePaise,
-          pricePerMessagePaise: account.pricePerMessagePaise,
+          balancePaise: outcome.balancePaise,
+          requiredPaise: outcome.requiredPaise,
+          pricePerMessagePaise: outcome.pricePerMessagePaise,
         };
       }
-
-      const intervalMs = Math.max(10, Math.min(90, account.defaultIntervalSeconds || 60)) * 1000;
-      const now = new Date();
-      const [pendingQueuedCount, latestQueued, latestSubmitted] = await Promise.all([
-        tx.message.count({ where: { organizationId, senderId: campaign.senderId, status: "QUEUED" } }),
-        tx.message.findFirst({
-          where: { organizationId, senderId: campaign.senderId, status: "QUEUED" },
-          orderBy: { nextAttemptAt: "desc" },
-          select: { nextAttemptAt: true },
-        }),
-        tx.message.findFirst({
-          where: { organizationId, senderId: campaign.senderId, status: { in: ["SUBMITTED", "SENT", "DELIVERED", "READ"] }, submittedAt: { not: null } },
-          orderBy: { submittedAt: "desc" },
-          select: { submittedAt: true },
-        }),
-      ]);
-      let firstAttemptAt = new Date(now);
-      if (latestQueued) {
-        const queuedTail = latestQueued.nextAttemptAt > now
-          ? new Date(latestQueued.nextAttemptAt.getTime() + intervalMs)
-          : new Date(now.getTime() + pendingQueuedCount * intervalMs);
-        if (queuedTail > firstAttemptAt) firstAttemptAt = queuedTail;
-      }
-      if (latestSubmitted?.submittedAt) {
-        const afterLastSubmission = new Date(latestSubmitted.submittedAt.getTime() + intervalMs);
-        if (afterLastSubmission > firstAttemptAt) firstAttemptAt = afterLastSubmission;
-      }
-
-      const messages = eligible.map((contact, index) => ({
-        organizationId: organizationId,
-        campaignId: campaign.id,
-        senderId: campaign.senderId,
-        recipientE164: contact.phoneNumberE164,
-        body: renderMessageTemplate(campaign.messageBody!, {
-          firstName: contact.firstName,
-          lastName: contact.lastName,
-          company: contact.company,
-          phoneNumber: contact.phoneNumberE164,
-        }),
-        status: "QUEUED" as const,
-        idempotencyKey: `campaign:${campaign.id}:contact:${contact.id}`,
-        chargePaise: account.pricePerMessagePaise,
-        nextAttemptAt: new Date(firstAttemptAt.getTime() + index * intervalMs),
-      }));
-      const created = await tx.message.createMany({ data: messages, skipDuplicates: true });
-      const actualChargePaise = created.count * account.pricePerMessagePaise;
-      let balanceAfterPaise = account.balancePaise;
-      if (actualChargePaise > 0) {
-        const charged = await tx.creditAccount.updateMany({
-          where: { id: account.id, balancePaise: { gte: actualChargePaise } },
-          data: { balancePaise: { decrement: actualChargePaise } },
-        });
-        if (!charged.count) throw new Error("INSUFFICIENT_PREPAID_CREDIT");
-        balanceAfterPaise = account.balancePaise - actualChargePaise;
-        await tx.creditTransaction.create({
-          data: {
-            organizationId: organizationId,
-            accountId: account.id,
-            type: "DEBIT",
-            amountPaise: actualChargePaise,
-            balanceAfterPaise,
-            pricePerMessagePaise: account.pricePerMessagePaise,
-            messageCount: created.count,
-            reference: `campaign:${campaign.id}`,
-            description: `Prepaid charge for ${created.count} queued campaign messages`,
-            actorUserId: context.user.id,
-          },
-        });
-      }
+      const created = { count: outcome.queuedCount };
+      const actualChargePaise = outcome.chargedPaise;
+      const balanceAfterPaise = outcome.balanceAfterPaise;
+      const account = { pricePerMessagePaise: outcome.pricePerMessagePaise, defaultIntervalSeconds: outcome.intervalSeconds };
 
       await tx.campaignRecipient.updateMany({
         where: { campaignId: campaign.id, status: "PENDING" },
@@ -180,6 +112,7 @@ export async function POST(_request: Request, route: RouteContext) {
     return NextResponse.json({ result, message: "Campaign jobs are durably queued. Message delivery requires an enabled dispatch worker." }, { status: 202 });
   } catch (error) {
     if (error instanceof Error && error.message === "INSUFFICIENT_PREPAID_CREDIT") return NextResponse.json({ error: "Insufficient prepaid credits. Please top up before queueing this campaign." }, { status: 402 });
+    if (error && typeof error === "object" && "code" in error && error.code === "P2034") return NextResponse.json({ error: "Another request is queueing this campaign. Wait a moment and check the campaign before retrying." }, { status: 409 });
     console.error("Campaign queue operation failed", error);
     return NextResponse.json({ error: "Unable to queue campaign. Retry the operation; message creation is idempotent." }, { status: 500 });
   }
