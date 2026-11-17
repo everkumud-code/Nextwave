@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw, ShieldCheck, Wallet } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 
 type Client = { id: string; name: string; slug: string; status: string; creditAccount: { balancePaise: number; pricePerMessagePaise: number; defaultIntervalSeconds: number } | null };
 const rupees = (p: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(p / 100);
@@ -47,7 +48,7 @@ export default function AdminCreditsPage() {
   }
 
   return <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900 sm:px-8"><div className="mx-auto max-w-6xl">
-    <Link href="/" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900"><ArrowLeft size={16}/> Back to workspace</Link>
+    <BrandLogo className="mb-4 h-10 w-auto" /><Link href="/" className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900"><ArrowLeft size={16}/> Back to workspace</Link>
     <div className="mt-6 flex flex-wrap items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-emerald-700">Platform control</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Client credits & pricing</h1><p className="mt-2 text-sm text-slate-500">Allocate prepaid balances and set each client’s per-message rate.</p></div><div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800"><ShieldCheck size={15}/> Platform admin only</div></div>
     {error&&<p className="mt-5 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}{notice&&<p className="mt-5 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</p>}
     {busy?<p className="mt-8 text-sm text-slate-500">Loading client accounts…</p>:<div className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
@@ -60,7 +61,7 @@ export default function AdminCreditsPage() {
           <label className="block text-sm font-medium">Add credit (₹)<input type="number" min="0" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm"/></label>
           <label className="block text-sm font-medium">Per-message charge (paise)<input type="number" min="1" step="1" value={rate} onChange={e=>setRate(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm"/><span className="mt-1 block text-xs text-slate-400">10 = ₹0.10/message · 30 = ₹0.30/message</span></label>
           <label className="block text-sm font-medium">Ledger note (optional)<input value={description} onChange={e=>setDescription(e.target.value)} maxLength={240} placeholder="Prepaid package / invoice reference" className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm"/></label>
-          <button disabled={!selected||saving} className="w-full rounded-xl bg-[#1c4b35] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{saving?"Updating wallet…":"Add credit & save rate"}</button>
+          <button disabled={!selected||saving} className="w-full rounded-xl bg-[#0A78CC] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{saving?"Updating wallet…":"Add credit & save rate"}</button>
         </form>
         <p className="mt-4 text-xs leading-5 text-slate-400">Credit allocations and price changes are recorded in the audit log. Price changes apply to campaigns queued after the change; already queued campaigns retain their original charge.</p>
       </section>
