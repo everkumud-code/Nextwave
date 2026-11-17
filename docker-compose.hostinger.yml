@@ -30,7 +30,7 @@ services:
       QR_SESSION_PORT: "4100"
       QR_SESSION_SERVICE_TOKEN: ${QR_SESSION_SERVICE_TOKEN}
       QR_CREDENTIAL_ENCRYPTION_KEY: ${QR_CREDENTIAL_ENCRYPTION_KEY}
-      QR_LOG_LEVEL: info
+      QR_LOG_LEVEL: ${QR_LOG_LEVEL:-warn}
     depends_on:
       db:
         condition: service_healthy

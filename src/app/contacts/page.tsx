@@ -30,7 +30,7 @@ export default function ContactsPage() {
   const [notice, setNotice] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ firstName: "", lastName: "", phoneNumber: "", email: "", company: "", whatsappConsent: false });
+  const [form, setForm] = useState({ firstName: "", lastName: "", phoneNumber: "", email: "", company: "", whatsappConsent: true });
 
   const loadContacts = useCallback(async (search = query) => {
     setLoading(true); setError("");
@@ -64,7 +64,7 @@ export default function ContactsPage() {
       await readJson(await fetch("/api/contacts", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
       }));
-      setForm({ firstName: "", lastName: "", phoneNumber: "", email: "", company: "", whatsappConsent: false });
+      setForm({ firstName: "", lastName: "", phoneNumber: "", email: "", company: "", whatsappConsent: true });
       setShowForm(false); setNotice("Contact added to your workspace."); await loadContacts();
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to add contact."); }
     finally { setBusy(false); }

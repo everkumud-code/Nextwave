@@ -139,7 +139,7 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         job.senderId ? prisma.sender.findFirst({
           where: { id: job.senderId, organizationId: job.organizationId, archivedAt: null },
           select: {
-            id: true, connector: true, status: true, createdAt: true,
+            id: true, connector: true, status: true, createdAt: true, updatedAt: true,
             organization: { select: { timezone: true } },
             sessions: { where: { connectedAt: { not: null } }, orderBy: { connectedAt: "asc" }, take: 1, select: { connectedAt: true } },
           },
@@ -167,7 +167,9 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
           where: { id: job.id, status: "QUEUED", lockToken: job.lockToken },
           data: { lockedAt: null, lockToken: null, attemptCount: { decrement: 1 }, nextAttemptAt: new Date(Date.now() + 60_000) },
         });
-        if (job.campaignId) await autoPauseCampaign(job.organizationId, job.campaignId, "The assigned sender is not connected. Reconnect it, then resume.");
+        // a short reconnect is normal: pause only when the number has been away for more than five minutes
+        const awayMs = sender ? Date.now() - sender.updatedAt.getTime() : Number.POSITIVE_INFINITY;
+        if (job.campaignId && awayMs > 5 * 60_000) await autoPauseCampaign(job.organizationId, job.campaignId, "The assigned sender has been disconnected for more than five minutes. Reconnect it, then resume.");
         continue;
       }
       if (!contact || contact.status !== "ACTIVE" || !hasCurrentMarketingConsent(contact.consents)) {
