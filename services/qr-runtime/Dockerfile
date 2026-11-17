@@ -2,12 +2,12 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY prisma ./prisma
 COPY services/qr-runtime/tsconfig.json ./services/qr-runtime/tsconfig.json
 COPY services/qr-runtime/package.json ./services/qr-runtime/package.json
 
-RUN npm install
+RUN npm ci
 RUN npx prisma generate --schema=prisma/schema.prisma
 
 COPY services/qr-runtime/src ./services/qr-runtime/src

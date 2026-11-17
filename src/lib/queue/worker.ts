@@ -44,6 +44,7 @@ export async function claimQueuedMessages(limit = 25): Promise<ClaimedMessage[]>
           AND "nextAttemptAt" <= NOW()
           AND "attemptCount" < "maxAttempts"
           AND ("lockedAt" IS NULL OR "lockedAt" < NOW() - INTERVAL '5 minutes')
+          AND NOT EXISTS (SELECT 1 FROM "Campaign" AS paused WHERE paused."id" = "Message"."campaignId" AND paused."status" = 'PAUSED')
         ORDER BY "nextAttemptAt" ASC, "createdAt" ASC
         LIMIT ${safeLimit}
         FOR UPDATE SKIP LOCKED

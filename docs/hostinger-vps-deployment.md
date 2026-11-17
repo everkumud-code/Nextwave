@@ -87,17 +87,17 @@ Apply migrations before starting the application:
 docker compose --env-file .env.hostinger -f docker-compose.hostinger.yml run --rm --no-deps web npm run db:deploy
 ```
 
-Then start the web app and QR runtime. The queue worker is created but disabled by default:
+Then start the web app and QR runtime. The queue worker is in the compose profile `worker`, so a plain `up` never starts it (a disabled worker exits with an error and would restart in a loop); start it by name only when you decide to send, see section 6:
 
 ```bash
-docker compose --env-file .env.hostinger -f docker-compose.hostinger.yml up -d web qr-runtime queue-worker
+docker compose --env-file .env.hostinger -f docker-compose.hostinger.yml up -d web qr-runtime
 docker compose --env-file .env.hostinger -f docker-compose.hostinger.yml ps
 ```
 
 Check logs:
 
 ```bash
-docker compose --env-file .env.hostinger -f docker-compose.hostinger.yml logs --tail=100 web qr-runtime queue-worker
+docker compose --env-file .env.hostinger -f docker-compose.hostinger.yml logs --tail=100 web qr-runtime
 ```
 
 Check the web health endpoint locally:
@@ -184,7 +184,7 @@ For an update, pull the reviewed commit, rebuild, apply migrations, and recreate
 git pull --ff-only
 docker compose --env-file .env.hostinger -f docker-compose.hostinger.yml build
 docker compose --env-file .env.hostinger -f docker-compose.hostinger.yml run --rm --no-deps web npm run db:deploy
-docker compose --env-file .env.hostinger -f docker-compose.hostinger.yml up -d web qr-runtime queue-worker
+docker compose --env-file .env.hostinger -f docker-compose.hostinger.yml up -d web qr-runtime
 ```
 
 Do not run `docker system prune`, `docker compose down -v`, or delete Docker volumes as routine maintenance. Those commands can remove data or affect other hosted applications.

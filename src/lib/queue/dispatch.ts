@@ -3,6 +3,7 @@ import { hasCurrentMarketingConsent } from "@/lib/campaign-audience-rules";
 import { createConnectorRegistry } from "@/lib/connectors";
 import { isRetryableConnectorError } from "./retry-policy";
 import { claimQueuedMessages, markMessageSubmitted, retryOrFailMessage } from "./worker";
+import { shouldPauseForFailures } from "./auto-pause";
 
 export type DispatchBatchResult = { claimed: number; submitted: number; retried: number; failed: number };
 
@@ -17,6 +18,39 @@ async function reconcileCampaign(organizationId: string, campaignId: string) {
     where: { id: campaignId, organizationId, status: { in: ["QUEUED", "RUNNING"] } },
     data: { status: successful === 0 && failed > 0 ? "FAILED" : "COMPLETED", completedAt: new Date() },
   });
+}
+
+/** Stops a campaign by itself and records why; the owner resumes it from the campaign page. */
+async function autoPauseCampaign(organizationId: string, campaignId: string, reason: string) {
+  const paused = await prisma.campaign.updateMany({
+    where: { id: campaignId, organizationId, status: { in: ["QUEUED", "RUNNING"] } },
+    data: { status: "PAUSED" },
+  });
+  if (paused.count) {
+    await prisma.auditLog.create({
+      data: {
+        organizationId,
+        actorType: "SYSTEM",
+        action: "campaign.auto_paused",
+        resourceType: "Campaign",
+        resourceId: campaignId,
+        metadata: { reason },
+      },
+    });
+  }
+}
+
+/** Too many of the latest messages failed to deliver: pause before the number is hurt further. */
+async function pauseIfFailing(organizationId: string, campaignId: string) {
+  const recent = await prisma.message.findMany({
+    where: { organizationId, campaignId, status: { in: ["FAILED", "SUBMITTED", "SENT", "DELIVERED", "READ"] } },
+    orderBy: { updatedAt: "desc" },
+    take: 25,
+    select: { status: true, errorCode: true },
+  });
+  if (shouldPauseForFailures(recent)) {
+    await autoPauseCampaign(organizationId, campaignId, "At least 5 of the last 10 messages failed to deliver. Check the sender, then resume.");
+  }
 }
 
 export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResult> {
@@ -69,7 +103,10 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
               data: { status: "FAILED" },
             });
           }
-          if (job.campaignId) await reconcileCampaign(job.organizationId, job.campaignId);
+          if (job.campaignId) {
+            await reconcileCampaign(job.organizationId, job.campaignId);
+            await pauseIfFailing(job.organizationId, job.campaignId);
+          }
         } else result.retried += 1;
       }
     };
@@ -97,7 +134,13 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
 
       recipientContactId = contact?.id ?? null;
       if (!sender || sender.status !== "CONNECTED") {
-        await fail("SENDER_NOT_CONNECTED", "The assigned sender is no longer connected.", false);
+        // Do not burn the campaign: give the message back untouched (its attempt is not counted), wait a minute,
+        // and pause the campaign so that nothing else is tried until the owner has reconnected the number.
+        await prisma.message.updateMany({
+          where: { id: job.id, status: "QUEUED", lockToken: job.lockToken },
+          data: { lockedAt: null, lockToken: null, attemptCount: { decrement: 1 }, nextAttemptAt: new Date(Date.now() + 60_000) },
+        });
+        if (job.campaignId) await autoPauseCampaign(job.organizationId, job.campaignId, "The assigned sender is not connected. Reconnect it, then resume.");
         continue;
       }
       if (!contact || contact.status !== "ACTIVE" || !hasCurrentMarketingConsent(contact.consents)) {

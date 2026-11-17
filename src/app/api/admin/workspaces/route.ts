@@ -20,8 +20,17 @@ export async function GET() {
         orderBy: { createdAt: "asc" },
         select: { id: true, displayName: true, phoneNumberE164: true, status: true, connector: true },
       },
-      _count: { select: { contacts: true, campaigns: true, messages: true } },
+      _count: { select: { contacts: true, campaigns: true } },
     },
   });
-  return NextResponse.json({ organizations });
+  // Message has no relation to Organization in the schema (organizationId is a plain column), so its count is read separately
+  const messageCounts = await prisma.message.groupBy({
+    by: ["organizationId"],
+    where: { organizationId: { in: organizations.map((o) => o.id) } },
+    _count: { _all: true },
+  });
+  const byOrg = new Map(messageCounts.map((m) => [m.organizationId, m._count._all]));
+  return NextResponse.json({
+    organizations: organizations.map((o) => ({ ...o, _count: { ...o._count, messages: byOrg.get(o.id) ?? 0 } })),
+  });
 }

@@ -3,8 +3,8 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 FROM base AS dependencies
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 FROM base AS builder
 COPY --from=dependencies /app/node_modules ./node_modules
