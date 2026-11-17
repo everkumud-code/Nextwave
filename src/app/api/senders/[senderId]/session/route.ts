@@ -58,7 +58,7 @@ export async function GET(_request: Request, route: RouteContext) {
   }
 }
 
-export async function POST(_request: Request, route: RouteContext) {
+export async function POST(request: Request, route: RouteContext) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to connect senders." }, { status: 403 });
@@ -67,11 +67,17 @@ export async function POST(_request: Request, route: RouteContext) {
   if (!sender) return NextResponse.json({ error: "Sender not found." }, { status: 404 });
   if (sender.connector !== "QR_SESSION") return NextResponse.json({ error: "This sender does not use the QR session connector." }, { status: 400 });
 
+  const body = await request.json().catch(() => ({}));
+  const riskAccepted = body?.acceptRisk === true;
   try {
     const existing = await prisma.qrSession.findFirst({
       where: { organizationId: context.organization.id, senderId, activeKey: `${context.organization.id}:${senderId}` },
       orderBy: { updatedAt: "desc" },
     });
+    // A new link is made only after the customer has confirmed, in these words, what it means (recorded in the audit log).
+    if (!existing && !riskAccepted) {
+      return NextResponse.json({ error: "Confirm the connection terms first: this links the number through linked-device (unofficial) access, which WhatsApp can limit or ban." }, { status: 400 });
+    }
     const manager = getQrSessionManager();
     const session = existing
       ? await manager.refresh(context.organization.id, existing.id)
@@ -97,7 +103,7 @@ export async function POST(_request: Request, route: RouteContext) {
           action: existing ? "sender.qr_session_refreshed" : "sender.qr_session_started",
           resourceType: "QrSession",
           resourceId: session.id,
-          metadata: { senderId },
+          metadata: { senderId, ...(riskAccepted ? { unofficialAccessRiskAcceptedAt: new Date().toISOString() } : {}) },
         },
       }),
     ]);
