@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, FolderPlus, Loader2, RefreshCw, Search, Trash2, Users } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 
 type Contact = { id: string; firstName: string | null; lastName: string | null; phoneNumberE164: string; email: string | null; company: string | null; status: string };
 type Group = { id: string; name: string; description: string | null; createdAt: string; updatedAt: string; _count: { members: number } };
@@ -103,10 +104,10 @@ export default function ContactGroupsPage() {
     finally { setBusy(false); }
   }
 
-  return <div className="min-h-screen bg-[#f6f8f6]">
+  return <div className="min-h-screen bg-[#F2F7FC]">
     <header className="sticky top-0 z-10 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/90 px-5 backdrop-blur-xl md:px-8">
-      <div className="flex items-center gap-3"><Link href="/contacts" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><ArrowLeft size={18}/></Link><div><p className="text-xs text-slate-400">Workspace / Contacts</p><h1 className="text-lg font-semibold text-slate-900">Contact groups</h1></div></div>
-      <button onClick={startNew} className="inline-flex items-center gap-2 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-sm font-semibold text-white"><FolderPlus size={16}/> New group</button>
+      <div className="flex items-center gap-3"><Link href="/contacts" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><ArrowLeft size={18}/></Link><BrandLogo className="hidden h-8 w-auto sm:block" /><div><p className="text-xs text-slate-400">Workspace / Contacts</p><h1 className="text-lg font-semibold text-slate-900">Contact groups</h1></div></div>
+      <button onClick={startNew} className="inline-flex items-center gap-2 rounded-xl bg-[#0A78CC] px-4 py-2.5 text-sm font-semibold text-white"><FolderPlus size={16}/> New group</button>
     </header>
     <main className="mx-auto grid max-w-[1400px] gap-5 p-5 lg:grid-cols-[340px_1fr] md:p-8">
       {error && <p className="rounded-xl bg-rose-50 p-3 text-xs text-rose-700 lg:col-span-2">{error}</p>}
@@ -122,7 +123,7 @@ export default function ContactGroupsPage() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4"><div><h3 className="text-sm font-semibold text-slate-800">Choose contacts</h3><p className="mt-1 text-xs text-slate-500">Loaded up to {contacts.length.toLocaleString()} contacts</p></div><div className="relative w-full md:max-w-xs"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search contacts…" className={field+" pl-9"}/></div></div>
         <div className="max-h-[520px] overflow-auto">{visible.length ? <div className="divide-y divide-slate-50">{visible.map(contact => <label key={contact.id} className="flex cursor-pointer items-center gap-3 px-5 py-3 hover:bg-slate-50"><input type="checkbox" checked={selected.includes(contact.id)} onChange={() => toggleContact(contact.id)} className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"/><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-800">{[contact.firstName, contact.lastName].filter(Boolean).join(" ") || "Unnamed contact"}</span><span className="mt-0.5 block truncate text-[11px] text-slate-500">{contact.phoneNumberE164} · {contact.company || contact.email || contact.status}</span></span>{selected.includes(contact.id) && <Check size={16} className="text-emerald-700"/>}</label>)}</div> : <p className="p-10 text-center text-xs text-slate-400">No matching contacts.</p>}</div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/60 p-4"><button onClick={startNew} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600">Clear</button><button onClick={() => void saveGroup()} disabled={busy || !name.trim()} className="inline-flex items-center gap-2 rounded-xl bg-[#1c4b35] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy ? <Loader2 className="animate-spin" size={16}/> : <Check size={16}/>} {activeId ? "Save group" : "Create group"}</button></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/60 p-4"><button onClick={startNew} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600">Clear</button><button onClick={() => void saveGroup()} disabled={busy || !name.trim()} className="inline-flex items-center gap-2 rounded-xl bg-[#0A78CC] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy ? <Loader2 className="animate-spin" size={16}/> : <Check size={16}/>} {activeId ? "Save group" : "Create group"}</button></div>
       </section>
     </main>
   </div>;

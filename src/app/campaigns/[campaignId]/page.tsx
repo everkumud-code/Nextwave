@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { renderMessageTemplate } from "@/lib/message-template";
 import { ArrowLeft, CalendarClock, Check, Loader2, RefreshCw, Save, Send, Users } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 
 type Contact = { id: string; phoneNumberE164: string; firstName: string | null; lastName: string | null; email: string | null; company: string | null };
 type Sender = { id: string; displayName: string; phoneNumberE164: string; status: string };
@@ -156,11 +157,11 @@ export default function CampaignDetailPage() {
   });
   const editable = campaign?.status === "DRAFT";
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#f6f8f6] text-sm text-slate-500"><RefreshCw className="mr-2 animate-spin" size={16}/> Loading campaign…</div>;
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#F2F7FC] text-sm text-slate-500"><RefreshCw className="mr-2 animate-spin" size={16}/> Loading campaign…</div>;
 
-  return <div className="min-h-screen bg-[#f6f8f6]">
+  return <div className="min-h-screen bg-[#F2F7FC]">
     <header className="sticky top-0 z-10 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/90 px-5 backdrop-blur-xl md:px-8">
-      <div className="flex items-center gap-3"><Link href="/campaigns" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><ArrowLeft size={18}/></Link><div><p className="text-xs text-slate-400">Workspace / Campaigns</p><h1 className="text-lg font-semibold text-slate-900">Campaign editor</h1></div></div>
+      <div className="flex items-center gap-3"><Link href="/campaigns" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><ArrowLeft size={18}/></Link><BrandLogo className="hidden h-8 w-auto sm:block" /><div><p className="text-xs text-slate-400">Workspace / Campaigns</p><h1 className="text-lg font-semibold text-slate-900">Campaign editor</h1></div></div>
       {editable && <div className="flex items-center gap-2"><button onClick={() => void save()} disabled={busy || validating || queueing || scheduling} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50">{busy?<Loader2 className="animate-spin" size={16}/>:<Save size={16}/>} Save draft</button><button onClick={() => void sendNow()} disabled={busy || validating || queueing || scheduling} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{queueing?<Loader2 className="animate-spin" size={16}/>:<Send size={16}/>} Send now</button>{form.scheduledAt && new Date(form.scheduledAt).getTime() > Date.now() && <button onClick={() => void scheduleCampaign()} disabled={scheduling || busy || queueing || validating} className="inline-flex items-center gap-2 rounded-xl bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{scheduling?<Loader2 className="animate-spin" size={16}/>:<CalendarClock size={16}/>} Schedule for later</button>}</div>}
     </header>
     <main className="mx-auto max-w-[1200px] p-5 md:p-8">

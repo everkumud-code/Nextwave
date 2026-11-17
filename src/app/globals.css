@@ -5,6 +5,19 @@
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 html, body { min-height: 100%; }
-body { margin: 0; background: #f6f8f6; color: #17221b; font-family: Arial, Helvetica, sans-serif; }
+body { margin: 0; background: #F2F7FC; color: #0F1B2A; font-family: Arial, Helvetica, sans-serif; }
 button, input { font: inherit; }
-::selection { background: #d8f2e1; color: #153d2b; }
+::selection { background: #D6EAFB; color: #0B2E52; }
+
+/* opening: the logo rolls in like a sea wave */
+.nw-splash { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #ffffff; transition: opacity 0.7s ease; }
+.nw-splash-out { opacity: 0; pointer-events: none; }
+.nw-splash-logo { position: relative; z-index: 2; width: min(560px, 82vw); height: auto; filter: url(#nw-ripple); animation: nw-logo-in 2.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.nw-waves { position: absolute; inset: auto 0 0 0; height: 46vh; z-index: 1; }
+.nw-wave { position: absolute; bottom: 0; left: 0; width: 200%; height: 100%; }
+.nw-wave-back { animation: nw-wave-run 3.4s linear both, nw-wave-rise 3.4s ease-in-out both; }
+.nw-wave-front { animation: nw-wave-run 2.6s linear both, nw-wave-rise 3s ease-in-out both; }
+@keyframes nw-wave-run { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+@keyframes nw-wave-rise { 0% { bottom: -60%; } 55% { bottom: -8%; } 100% { bottom: -40%; } }
+@keyframes nw-logo-in { 0% { opacity: 0; transform: translateY(40px) scale(0.94); } 30% { opacity: 1; } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .nw-splash { display: none; } }
