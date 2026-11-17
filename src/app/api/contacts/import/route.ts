@@ -16,12 +16,14 @@ export async function POST(request: Request) {
     let requestedOrganizationId: string | null = null;
     let importSource = "CSV_IMPORT";
     let previewOnly = true;
+    let attestConsent = false;
     const contentType = request.headers.get("content-type") ?? "";
     if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
       requestedOrganizationId = typeof form.get("organizationId") === "string" ? String(form.get("organizationId")) : null;
       const file = form.get("file");
       previewOnly = form.get("preview") !== "false";
+      attestConsent = form.get("attestConsent") === "true";
       if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") return NextResponse.json({ error: "Select a CSV or XLSX file." }, { status: 400 });
       const name = file.name.toLowerCase();
       if (name.endsWith(".xlsx")) {
@@ -39,6 +41,7 @@ export async function POST(request: Request) {
       if (typeof body.csv !== "string" || !body.csv.trim()) return NextResponse.json({ error: "Upload a CSV or XLSX file." }, { status: 400 });
       if (new TextEncoder().encode(body.csv).length > MAX_CSV_BYTES) return NextResponse.json({ error: "CSV file must be 2 MB or smaller." }, { status: 413 });
       previewOnly = body.preview !== false;
+      attestConsent = body.attestConsent === true;
       rows = parseContactCsv(body.csv);
     }
     const isAdmin = isPlatformAdminUser(context.user);
@@ -80,9 +83,13 @@ export async function POST(request: Request) {
               email: row.email,
               company: row.company,
               source: importSource,
-              ...(row.whatsappConsent ? { consents: { create: {
+              ...(row.whatsappConsent || attestConsent ? { consents: { create: {
                 channel: "WHATSAPP", purpose: "MARKETING", status: "GRANTED",
-                source: importSource, grantedAt: new Date(),
+                // an explicit yes in the file wins; otherwise the person who imported has confirmed it for the whole file
+                source: row.whatsappConsent ? importSource : "IMPORT_ATTESTATION",
+                evidenceRef: row.whatsappConsent ? null : `attested-by-user:${context.user.id}`,
+                noticeVersion: row.whatsappConsent ? null : "attestation-v1",
+                grantedAt: new Date(),
               } } } : {}),
             },
             select: { id: true },
@@ -94,7 +101,7 @@ export async function POST(request: Request) {
               action: "contact.imported",
               resourceType: "Contact",
               resourceId: contact.id,
-              metadata: { source: importSource, consentRecorded: row.whatsappConsent, sourceLine: row.line },
+              metadata: { source: importSource, consentRecorded: row.whatsappConsent || attestConsent, consentAttested: !row.whatsappConsent && attestConsent, sourceLine: row.line },
             },
           });
         });

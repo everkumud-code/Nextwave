@@ -100,13 +100,25 @@ export default function CampaignDetailPage() {
     finally { setBusy(false); }
   }
 
-  async function validateCampaign() {
-    setValidating(true); setError(""); setValidation(null);
+  // One button: save what is on the screen, check it, and start sending. Nothing to validate or queue by hand.
+  async function sendNow() {
+    setQueueing(true); setValidating(true); setError(""); setNotice(""); setValidation(null);
     try {
-      const data = await readJson(await fetch(`/api/campaigns/${campaignId}/validate`, { method: "POST" }));
-      setValidation(data);
-    } catch (e) { setError(e instanceof Error ? e.message : "Unable to validate campaign."); }
-    finally { setValidating(false); }
+      await readJson(await fetch(`/api/campaigns/${campaignId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name, description: form.description, messageBody: form.messageBody, senderId: form.senderId || null,
+          scheduledAt: null,
+          recipientContactIds: selected,
+        }),
+      }));
+      const check = await readJson(await fetch(`/api/campaigns/${campaignId}/validate`, { method: "POST" }));
+      if (!check.ready) { setValidation(check); setError("Fix the points below, then press Send again."); return; }
+      await readJson(await fetch(`/api/campaigns/${campaignId}/queue`, { method: "POST" }));
+      setNotice("Sending has started. The first message goes out now and the others follow one by one.");
+      await load();
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to start sending."); }
+    finally { setQueueing(false); setValidating(false); }
   }
 
   async function scheduleCampaign() {
@@ -126,17 +138,6 @@ export default function CampaignDetailPage() {
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to schedule campaign."); }
     finally { setScheduling(false); }
-  }
-
-  async function queueCampaign() {
-    setQueueing(true); setError(""); setNotice("");
-    try {
-      const data = await readJson(await fetch(`/api/campaigns/${campaignId}/queue`, { method: "POST" }));
-      setNotice(data.message || "Campaign jobs queued.");
-      setValidation(null);
-      await load();
-    } catch (e) { setError(e instanceof Error ? e.message : "Unable to queue campaign."); }
-    finally { setQueueing(false); }
   }
 
   async function resumeCampaign() {
@@ -160,7 +161,7 @@ export default function CampaignDetailPage() {
   return <div className="min-h-screen bg-[#f6f8f6]">
     <header className="sticky top-0 z-10 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/90 px-5 backdrop-blur-xl md:px-8">
       <div className="flex items-center gap-3"><Link href="/campaigns" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><ArrowLeft size={18}/></Link><div><p className="text-xs text-slate-400">Workspace / Campaigns</p><h1 className="text-lg font-semibold text-slate-900">Campaign editor</h1></div></div>
-      {editable && <div className="flex items-center gap-2"><button onClick={() => void validateCampaign()} disabled={validating || busy || queueing || scheduling} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50">{validating?<Loader2 className="animate-spin" size={16}/>:<Check size={16}/>} Validate</button><button onClick={() => void save()} disabled={busy || validating || queueing || scheduling} className="inline-flex items-center gap-2 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy?<Loader2 className="animate-spin" size={16}/>:<Save size={16}/>} Save draft</button>{(!form.scheduledAt || new Date(form.scheduledAt).getTime() <= Date.now()) && <button onClick={() => void queueCampaign()} disabled={!validation?.ready || queueing || busy || validating || scheduling} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{queueing?<Loader2 className="animate-spin" size={16}/>:<Send size={16}/>} Queue now</button>}{form.scheduledAt && <button onClick={() => void scheduleCampaign()} disabled={!validation?.ready || scheduling || busy || queueing || validating} className="inline-flex items-center gap-2 rounded-xl bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">{scheduling?<Loader2 className="animate-spin" size={16}/>:<CalendarClock size={16}/>} Schedule</button>}</div>}
+      {editable && <div className="flex items-center gap-2"><button onClick={() => void save()} disabled={busy || validating || queueing || scheduling} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50">{busy?<Loader2 className="animate-spin" size={16}/>:<Save size={16}/>} Save draft</button><button onClick={() => void sendNow()} disabled={busy || validating || queueing || scheduling} className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{queueing?<Loader2 className="animate-spin" size={16}/>:<Send size={16}/>} Send now</button>{form.scheduledAt && new Date(form.scheduledAt).getTime() > Date.now() && <button onClick={() => void scheduleCampaign()} disabled={scheduling || busy || queueing || validating} className="inline-flex items-center gap-2 rounded-xl bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{scheduling?<Loader2 className="animate-spin" size={16}/>:<CalendarClock size={16}/>} Schedule for later</button>}</div>}
     </header>
     <main className="mx-auto max-w-[1200px] p-5 md:p-8">
       {error && <p className="mb-4 rounded-xl bg-rose-50 p-3 text-xs text-rose-700">{error}</p>}

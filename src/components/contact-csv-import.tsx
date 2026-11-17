@@ -14,6 +14,7 @@ export function ContactCsvImport({ onImported }: { onImported: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [attest, setAttest] = useState(false);
 
   async function previewFile(file?: File) {
     if (!file) return;
@@ -43,6 +44,7 @@ export function ContactCsvImport({ onImported }: { onImported: () => void }) {
       const form = new FormData();
       form.set("file", file);
       form.set("preview", "false");
+      form.set("attestConsent", attest ? "true" : "false");
       const response = await fetch("/api/contacts/import", { method: "POST", body: form });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Import failed.");
@@ -63,7 +65,7 @@ export function ContactCsvImport({ onImported }: { onImported: () => void }) {
         {summary && <><div className="mt-5 grid grid-cols-3 gap-3"><div className="rounded-xl bg-emerald-50 p-3"><p className="text-[10px] uppercase text-emerald-700">Ready</p><p className="text-xl font-semibold text-emerald-900">{summary.validCount}</p></div><div className="rounded-xl bg-rose-50 p-3"><p className="text-[10px] uppercase text-rose-700">Invalid / duplicate</p><p className="text-xl font-semibold text-rose-900">{summary.invalidCount}</p></div><div className="rounded-xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">Total rows</p><p className="text-xl font-semibold text-slate-900">{summary.totalRows}</p></div></div>
           <div className="mt-4 max-h-64 overflow-auto rounded-xl border border-slate-100"><table className="w-full text-left text-xs"><thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="p-2">Line</th><th className="p-2">Name</th><th className="p-2">Phone</th><th className="p-2">Result</th></tr></thead><tbody>{summary.preview.map(row => <tr key={row.line} className="border-t border-slate-100"><td className="p-2 text-slate-400">{row.line}</td><td className="p-2">{[row.firstName,row.lastName].filter(Boolean).join(" ") || "—"}</td><td className="p-2">{row.phoneNumber}</td><td className="p-2">{row.errors.length ? <span className="text-rose-600">{row.errors.join(", ")}</span> : <span className="text-emerald-700">Ready</span>}</td></tr>)}</tbody></table></div>
           {summary.totalRows > summary.preview.length && <p className="mt-2 text-[11px] text-slate-500">Showing first 100 rows in preview; all rows are validated before import.</p>}
-          <p className="mt-3 text-[11px] text-slate-500">Only explicitly affirmative consent values (yes, true, 1, granted) create a WhatsApp marketing consent record.</p>
+          <label className="mt-3 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900"><input type="checkbox" checked={attest} onChange={(event) => setAttest(event.target.checked)} className="mt-1" /><span><b>These people agreed to receive my WhatsApp messages.</b> Tick this and every imported contact can be messaged straight away; your confirmation is recorded for each one. Leave it empty to import without permission (only rows with a yes / true / 1 / granted consent value can be messaged).</span></label>
         </>}
         <div className="mt-5 flex justify-end gap-2"><button onClick={() => setOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-600">Close</button>{summary && <button disabled={busy || summary.validCount===0} onClick={() => void importContacts()} className="rounded-xl bg-[#1c4b35] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy?"Importing…":`Import ${summary.validCount} contacts`}</button>}</div>
       </div>
