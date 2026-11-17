@@ -31,13 +31,14 @@ export function SenderConnection({ senderId, senderName, disabled, onStatusChang
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [busy, setBusy] = useState(false);
+  const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
   const onStatusChangeRef = useRef(onStatusChange);
   useEffect(() => { onStatusChangeRef.current = onStatusChange; }, [onStatusChange]);
 
-  const request = useCallback(async (method: "GET" | "POST" | "DELETE") => {
-    const response = await fetch(`/api/senders/${senderId}/session`, { method, cache: "no-store" });
+  const request = useCallback(async (method: "GET" | "POST" | "DELETE", body?: { acceptRisk: true }) => {
+    const response = await fetch(`/api/senders/${senderId}/session`, { method, cache: "no-store", ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Unable to update sender connection.");
     return data.session as Session | null;
@@ -66,7 +67,7 @@ export function SenderConnection({ senderId, senderName, disabled, onStatusChang
   async function start() {
     setBusy(true); setError("");
     try {
-      const next = await request("POST");
+      const next = await request("POST", { acceptRisk: true });
       setSession(next);
       const status: SenderStatus = next?.status === "CONNECTED" ? "CONNECTED" : next?.status === "RECONNECTING" ? "ATTENTION" : next && ["DISCONNECTED", "REVOKED", "ERROR"].includes(next.status) ? "DISCONNECTED" : "PENDING";
       onStatusChangeRef.current?.(status);
@@ -106,9 +107,10 @@ export function SenderConnection({ senderId, senderName, disabled, onStatusChang
           {session?.status === "CONNECTED" ? <div className="py-10 text-center"><CheckCircle2 size={42} className="mx-auto text-emerald-600"/><h4 className="mt-4 font-semibold text-slate-900">Sender connected</h4><p className="mt-1 text-xs text-slate-500">The session service has confirmed the connection.</p>{session.connectedAt && <p className="mt-2 text-[11px] text-slate-400">Connected {new Date(session.connectedAt).toLocaleString()}</p>}</div>
           : session && ["QR_PENDING", "PAIRING"].includes(session.status) && session.pairingPayload && !expired ? <div className="py-5 text-center"><div className="mx-auto inline-flex rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"><QRCodeSVG value={session.pairingPayload} size={220} level="M" includeMargin/></div><h4 className="mt-4 font-semibold text-slate-900">Scan to connect</h4><p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-slate-500">Open the companion app on your phone, go to Linked Devices and scan this QR code.</p>{session.pairingExpiresAt && <p className="mt-3 text-[11px] text-amber-700">QR expires at {new Date(session.pairingExpiresAt).toLocaleTimeString()}</p>}</div>
           : <div className="py-9 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800">{session?.status === "RECONNECTING" ? <Loader2 className="animate-spin" size={25}/> : session?.status === "ERROR" ? <ShieldAlert size={25}/> : <QrCode size={25}/>}</div><h4 className="mt-4 font-semibold text-slate-900">{expired ? "QR code expired" : session?.status === "RECONNECTING" ? "Reconnecting…" : session?.status === "ERROR" ? "Could not connect" : "Ready to connect"}</h4><p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-slate-500">{session?.lastErrorMessage || (expired ? "Generate a fresh QR code to continue." : "Start a session to request a fresh QR code from the connected session service.")}</p></div>}
+          {!active && <label className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-900"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-1" /><span>I understand that this links my WhatsApp number through linked-device (unofficial) access, not through the official WhatsApp Business API. WhatsApp can limit or ban such numbers and NextWave cannot prevent or undo that. I will message only people who agreed to hear from me. A new number is held to a small daily allowance that grows over its first two weeks.</span></label>}
           {error && <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-700">{error}</p>}
           <div className="flex gap-2">
-            {active ? <button disabled={busy} onClick={disconnect} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <Unplug size={14}/>} Disconnect</button> : <button disabled={busy} onClick={start} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#153b29] disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <QrCode size={14}/>} {session && ["QR_PENDING", "PAIRING"].includes(session.status) ? "Refresh QR" : session ? "Start new connection" : "Start connection"}</button>}
+            {active ? <button disabled={busy} onClick={disconnect} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <Unplug size={14}/>} Disconnect</button> : <button disabled={busy || !accepted} onClick={start} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1c4b35] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#153b29] disabled:opacity-50">{busy ? <Loader2 size={14} className="animate-spin"/> : <QrCode size={14}/>} {session && ["QR_PENDING", "PAIRING"].includes(session.status) ? "Refresh QR" : session ? "Start new connection" : "Start connection"}</button>}
             <button onClick={()=>void refresh()} className="rounded-xl border border-slate-200 px-3 text-slate-500 hover:bg-slate-50" title="Refresh status"><RefreshCw size={15}/></button>
           </div>
           <p className="mt-3 text-center text-[10px] leading-4 text-slate-400">This panel displays the live response from your configured QR session service. It does not simulate a successful connection.</p>

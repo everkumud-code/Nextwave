@@ -2,10 +2,11 @@ import { prisma } from "@/lib/db/prisma";
 import { hasCurrentMarketingConsent } from "@/lib/campaign-audience-rules";
 import { createConnectorRegistry } from "@/lib/connectors";
 import { isRetryableConnectorError } from "./retry-policy";
-import { claimQueuedMessages, markMessageSubmitted, retryOrFailMessage } from "./worker";
+import { claimQueuedMessages, markMessageSubmitted, retryOrFailMessage, type ClaimedMessage } from "./worker";
 import { shouldPauseForFailures } from "./auto-pause";
+import { dailyLimitForAge, daysSince, startOfLocalDay, startOfNextLocalDay } from "./daily-limit";
 
-export type DispatchBatchResult = { claimed: number; submitted: number; retried: number; failed: number };
+export type DispatchBatchResult = { claimed: number; submitted: number; retried: number; failed: number; deferred: number };
 
 async function reconcileCampaign(organizationId: string, campaignId: string) {
   const [remaining, successful, failed] = await Promise.all([
@@ -53,12 +54,34 @@ async function pauseIfFailing(organizationId: string, campaignId: string) {
   }
 }
 
+/**
+ * The number has reached today's allowance: hand the message back untouched (its attempt is not counted) and give it a slot
+ * after the messages already waiting for tomorrow, so that the next day starts with the usual spacing and not with a burst.
+ */
+async function deferToNextDay(job: ClaimedMessage, senderId: string, timeZone: string) {
+  const tomorrow = startOfNextLocalDay(new Date(), timeZone);
+  const [tail, account] = await Promise.all([
+    prisma.message.findFirst({
+      where: { organizationId: job.organizationId, senderId, status: "QUEUED", nextAttemptAt: { gte: tomorrow }, id: { not: job.id } },
+      orderBy: { nextAttemptAt: "desc" },
+      select: { nextAttemptAt: true },
+    }),
+    prisma.creditAccount.findUnique({ where: { organizationId: job.organizationId }, select: { defaultIntervalSeconds: true } }),
+  ]);
+  const intervalMs = Math.max(10, Math.min(90, account?.defaultIntervalSeconds || 60)) * 1000;
+  const slot = tail ? new Date(tail.nextAttemptAt.getTime() + intervalMs) : tomorrow;
+  await prisma.message.updateMany({
+    where: { id: job.id, status: "QUEUED", lockToken: job.lockToken },
+    data: { lockedAt: null, lockToken: null, attemptCount: { decrement: 1 }, nextAttemptAt: slot },
+  });
+}
+
 export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResult> {
   const registry = createConnectorRegistry();
   const hasConfiguredConnector = registry.list().some(item => registry.get(item.type).getCapabilities().configured);
-  if (!hasConfiguredConnector) return { claimed: 0, submitted: 0, retried: 0, failed: 0 };
+  if (!hasConfiguredConnector) return { claimed: 0, submitted: 0, retried: 0, failed: 0, deferred: 0 };
   const jobs = await claimQueuedMessages(limit);
-  const result: DispatchBatchResult = { claimed: jobs.length, submitted: 0, retried: 0, failed: 0 };
+  const result: DispatchBatchResult = { claimed: jobs.length, submitted: 0, retried: 0, failed: 0, deferred: 0 };
 
   for (const job of jobs) {
     let recipientContactId: string | null = null;
@@ -115,7 +138,11 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
       const [sender, contact] = await Promise.all([
         job.senderId ? prisma.sender.findFirst({
           where: { id: job.senderId, organizationId: job.organizationId, archivedAt: null },
-          select: { id: true, connector: true, status: true },
+          select: {
+            id: true, connector: true, status: true, createdAt: true,
+            organization: { select: { timezone: true } },
+            sessions: { where: { connectedAt: { not: null } }, orderBy: { connectedAt: "asc" }, take: 1, select: { connectedAt: true } },
+          },
         }) : null,
         prisma.contact.findFirst({
           where: { organizationId: job.organizationId, phoneNumberE164: job.recipientE164 },
@@ -153,6 +180,18 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
       }
       if (sender.connector === "OTHER") {
         await fail("UNSUPPORTED_CONNECTOR", "No messaging adapter is registered for this sender connector.", false);
+        continue;
+      }
+
+      // today's allowance for this number (it grows with the days since the number was first connected)
+      const timeZone = sender.organization.timezone;
+      const allowance = dailyLimitForAge(daysSince(sender.sessions[0]?.connectedAt ?? sender.createdAt, new Date()));
+      const sentToday = await prisma.message.count({
+        where: { organizationId: job.organizationId, senderId: sender.id, status: { in: ["SUBMITTED", "SENT", "DELIVERED", "READ"] }, submittedAt: { gte: startOfLocalDay(new Date(), timeZone) } },
+      });
+      if (sentToday >= allowance) {
+        await deferToNextDay(job, sender.id, timeZone);
+        result.deferred += 1;
         continue;
       }
 
