@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { LogoSplash } from "@/components/logo-splash";
 
 export const metadata: Metadata = {
   title: "NextWave | Bulk WhatsApp messaging",
@@ -17,7 +18,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <LogoSplash />
+        {children}
+      </body>
     </html>
   );
 }
