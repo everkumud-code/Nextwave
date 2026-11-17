@@ -10,7 +10,7 @@ button, input { font: inherit; }
 ::selection { background: #D6EAFB; color: #0B2E52; }
 
 /* opening: the logo rolls in like a sea wave */
-.nw-splash { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #ffffff; transition: opacity 0.7s ease; }
+.nw-splash { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #ffffff; transition: opacity 0.6s ease; }
 .nw-splash-out { opacity: 0; pointer-events: none; }
 .nw-splash-logo { position: relative; z-index: 2; width: min(560px, 82vw); height: auto; filter: url(#nw-ripple); animation: nw-logo-in 2.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 .nw-waves { position: absolute; inset: auto 0 0 0; height: 46vh; z-index: 1; }
