@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { renderMessageTemplate } from "@/lib/message-template";
 import { templateSummary, templateValues, type Pin, type TemplateRef } from "@/lib/campaign-content";
+import { randomGapMs } from "./pacing";
 
 /** An official (Meta Cloud API) number can send about one message a second; a QR number keeps the 10 to 90 second pace. */
 export const OFFICIAL_INTERVAL_MS = 1000;
@@ -104,12 +105,13 @@ export async function enqueueCampaignMessages(tx: Prisma.TransactionClient, inpu
     }
     firstAttemptBySender.set(senderId, firstAttemptAt);
   }
-  const sentBySender = new Map<string, number>();
+  // the clock of every sender: an ordinary number rotates its gap (10 to 90 s at random), an official one sends about one a second
+  const clockBySender = new Map<string, number>();
 
   const messages = eligible.map((contact, index) => {
     const senderId = senderIds[index % senderIds.length];
-    const turn = sentBySender.get(senderId) ?? 0;
-    sentBySender.set(senderId, turn + 1);
+    const at = clockBySender.get(senderId) ?? firstAttemptBySender.get(senderId)!.getTime();
+    clockBySender.set(senderId, at + (connectorOf.get(senderId) === "META_CLOUD_API" ? OFFICIAL_INTERVAL_MS : randomGapMs()));
     return {
     organizationId,
     campaignId: campaign.id,
@@ -130,7 +132,7 @@ export async function enqueueCampaignMessages(tx: Prisma.TransactionClient, inpu
     status: "QUEUED" as const,
     idempotencyKey: `campaign:${campaign.id}:contact:${contact.id}`,
     chargePaise: account.pricePerMessagePaise,
-    nextAttemptAt: new Date(firstAttemptBySender.get(senderId)!.getTime() + turn * intervalOf(senderId)),
+    nextAttemptAt: new Date(at),
     };
   });
   const created = await tx.message.createMany({ data: messages, skipDuplicates: true });

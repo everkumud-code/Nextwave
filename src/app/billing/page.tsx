@@ -111,7 +111,7 @@ export default function BillingPage() {
         </section>
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <div className="flex items-center gap-2"><Clock3 size={18} className="text-emerald-700"/><h2 className="font-semibold">Default send spacing</h2></div>
-          <p className="mt-1 text-sm text-slate-500">Choose a preferred interval. Actual throughput remains subject to the connected provider’s approved limits; automatic interval rotation is not enabled.</p>
+          <p className="mt-1 text-sm text-slate-500">Messages from an ordinary number go out with a rotating gap: a random 10 to 90 seconds between two messages, so the sending never looks like a clock. This setting is kept for reference; the gap rotates by itself.</p>
           <div className="mt-4 flex flex-wrap items-center gap-3"><select value={interval} onChange={e=>setInterval(Number(e.target.value))} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">{[10,20,30,40,50,60,70,80,90].map(n=><option key={n} value={n}>{n} seconds</option>)}</select><button onClick={saveInterval} disabled={saving} className="rounded-xl bg-[#0A78CC] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : "Save preference"}</button><span className="text-xs text-slate-400">Default: 60 seconds</span></div>
         </section>
         <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
