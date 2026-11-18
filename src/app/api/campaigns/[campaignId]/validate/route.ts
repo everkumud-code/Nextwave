@@ -3,6 +3,8 @@ import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
 import { findUnsupportedTemplateVariables } from "@/lib/message-template";
+import { getCustomFieldKeys } from "@/lib/custom-fields";
+import { mediaProblem } from "@/lib/media";
 
 export const runtime = "nodejs";
 type RouteContext = { params: Promise<{ campaignId: string }> };
@@ -16,7 +18,7 @@ export async function POST(_request: Request, route: RouteContext) {
   const campaign = await prisma.campaign.findFirst({
     where: { id: campaignId, organizationId: context.organization.id },
     select: {
-      id: true, status: true, name: true, messageBody: true, senderId: true, scheduledAt: true,
+      id: true, status: true, name: true, messageBody: true, senderId: true, scheduledAt: true, mediaAssetId: true, mediaAsset: { select: { kind: true } },
       sender: { select: { organizationId: true, status: true, archivedAt: true } },
       recipients: { select: { contactId: true } },
     },
@@ -26,9 +28,11 @@ export async function POST(_request: Request, route: RouteContext) {
 
   const issues: string[] = [];
   if (!campaign.name.trim()) issues.push("Campaign name is missing.");
-  if (!campaign.messageBody?.trim()) issues.push("Message content is required.");
-  else {
-    const unsupported = findUnsupportedTemplateVariables(campaign.messageBody);
+  const mediaIssue = mediaProblem(campaign.mediaAsset?.kind, campaign.messageBody);
+  if (mediaIssue) issues.push(mediaIssue);
+  if (!campaign.messageBody?.trim() && !campaign.mediaAssetId) issues.push("Add a message, or attach a picture, video, audio file or PDF.");
+  else if (campaign.messageBody?.trim()) {
+    const unsupported = findUnsupportedTemplateVariables(campaign.messageBody, await getCustomFieldKeys(context.organization.id));
     if (unsupported.length) issues.push(`Unsupported message variables: ${unsupported.join(", ")}.`);
   }
   if (!campaign.senderId || !campaign.sender || campaign.sender.organizationId !== context.organization.id || campaign.sender.archivedAt) issues.push("Assign an active sender from this workspace.");
@@ -43,7 +47,7 @@ export async function POST(_request: Request, route: RouteContext) {
   const eligibleSelected = selectedIds.filter(id => eligible.has(id)).length;
   const suppressed = selectedIds.length - eligibleSelected;
   if (suppressed) issues.push(`${suppressed} selected recipient(s) no longer meet the current consent and contact-status rules.`);
-  if (selectedIds.length > 5000) issues.push("Campaign exceeds the 5,000-recipient planning limit.");
+  if (selectedIds.length > 50000) issues.push("Campaign exceeds the 50,000-recipient planning limit.");
 
   const ready = issues.length === 0;
   await prisma.auditLog.create({

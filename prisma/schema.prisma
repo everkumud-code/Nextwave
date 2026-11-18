@@ -98,41 +98,82 @@ enum CreditTransactionType {
   ADJUSTMENT
 }
 
+/// Counters for the identification numbers: client:<year>, and campaign:<organisation id>. Taken with one atomic statement.
+model IdCounter {
+  key   String @id
+  value Int    @default(0)
+}
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+}
+
+/// A file (picture, video, voice/audio, PDF) that a campaign sends. Kept in the database so that the web app and the QR runtime,
+/// which are separate containers, read the same bytes; the same file uploaded twice is stored once per workspace.
+model MediaAsset {
+  id              String       @id @default(cuid())
+  organizationId  String
+  kind            MediaKind
+  filename        String
+  mimeType        String
+  sizeBytes       Int
+  sha256          String
+  data            Bytes
+  createdByUserId String?
+  createdAt       DateTime     @default(now())
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaigns       Campaign[]
+  messages        Message[]
+
+  @@unique([organizationId, sha256])
+  @@index([organizationId, createdAt])
+}
+
 model Organization {
-  id          String             @id @default(cuid())
-  name        String
-  slug        String             @unique
-  status      OrganizationStatus @default(ACTIVE)
-  timezone    String             @default("Asia/Kolkata")
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  memberships Membership[]
-  senders     Sender[]
-  contacts    Contact[]
-  contactGroups ContactGroup[]
-  campaigns   Campaign[]
-  sessions    QrSession[]
-  qrCredentials QrCredential[]
-  deliveryReceipts QrDeliveryReceipt[]
+  id                       String                    @id @default(cuid())
+  name                     String
+  slug                     String                    @unique
+  status                   OrganizationStatus        @default(ACTIVE)
+  timezone                 String                    @default("Asia/Kolkata")
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  memberships              Membership[]
+  senders                  Sender[]
+  contacts                 Contact[]
+  contactGroups            ContactGroup[]
+  campaigns                Campaign[]
+  sessions                 QrSession[]
+  qrCredentials            QrCredential[]
+  deliveryReceipts         QrDeliveryReceipt[]
   providerDeliveryReceipts ProviderDeliveryReceipt[]
-  auditLogs   AuditLog[]
-  creditAccount CreditAccount?
-  creditTransactions CreditTransaction[]
-  invitations OrganizationInvite[]
+  auditLogs                AuditLog[]
+  creditAccount            CreditAccount?
+  creditTransactions       CreditTransaction[]
+  invitations              OrganizationInvite[]
+  mediaAssets              MediaAsset[]
+  inboundMessages          InboundMessage[]
+  paymentOrders            PaymentOrder[]
+  invoices                 Invoice[]
+  /// The client's unique identification number: BPML/<year of creation>/NR<serial>, for example BPML/2026/NR001
+  clientCode               String?                   @unique
 }
 
 model User {
-  id            String       @id @default(cuid())
-  email         String       @unique
-  name          String?
-  passwordHash  String?
-  emailVerified DateTime?
-  image         String?
-  isPlatformAdmin Boolean    @default(false)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  memberships   Membership[]
-  auditLogs     AuditLog[]
+  authTokens      AuthToken[]
+  id              String       @id @default(cuid())
+  email           String       @unique
+  name            String?
+  passwordHash    String?
+  emailVerified   DateTime?
+  image           String?
+  isPlatformAdmin Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  memberships     Membership[]
+  auditLogs       AuditLog[]
 }
 
 model Membership {
@@ -152,28 +193,31 @@ model Membership {
 }
 
 model Sender {
-  id                 String          @id @default(cuid())
-  organizationId     String
-  displayName        String
-  phoneNumber        String
-  phoneNumberE164    String
-  ownership          SenderOwnership @default(CUSTOMER)
-  connector          SenderConnector
-  status             SenderStatus    @default(PENDING)
-  providerAccountRef String?
-  assignedLabel      String?
-  lastConnectedAt    DateTime?
-  lastSeenAt         DateTime?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-  archivedAt         DateTime?
-  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sessions           QrSession[]
-  qrCredentials      QrCredential[]
-  deliveryReceipts   QrDeliveryReceipt[]
+  id                       String                    @id @default(cuid())
+  organizationId           String
+  displayName              String
+  phoneNumber              String
+  phoneNumberE164          String
+  ownership                SenderOwnership           @default(CUSTOMER)
+  connector                SenderConnector
+  status                   SenderStatus              @default(PENDING)
+  providerAccountRef       String?
+  assignedLabel            String?
+  lastConnectedAt          DateTime?
+  lastSeenAt               DateTime?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  archivedAt               DateTime?
+  /// The platform admin can set this number's messages per day by hand; without it the warm-up schedule applies
+  dailyLimitOverride       Int?
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inboundMessages          InboundMessage[]
+  sessions                 QrSession[]
+  qrCredentials            QrCredential[]
+  deliveryReceipts         QrDeliveryReceipt[]
   providerDeliveryReceipts ProviderDeliveryReceipt[]
-  campaigns          Campaign[]
-  messages           Message[]
+  campaigns                Campaign[]
+  messages                 Message[]
 
   @@unique([organizationId, phoneNumberE164])
   @@index([organizationId, status])
@@ -182,23 +226,23 @@ model Sender {
 }
 
 model QrSession {
-  id                 String          @id @default(cuid())
-  organizationId     String
-  senderId            String
-  ownership          SenderOwnership
-  status             QrSessionStatus @default(CREATED)
-  providerSessionId  String?
-  activeKey          String?         @unique
-  credentialRef      String?
-  connectedAt        DateTime?
-  lastSeenAt         DateTime?
-  lastErrorCode      String?
-  lastErrorMessage   String?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-  revokedAt          DateTime?
-  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sender             Sender          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  id                String          @id @default(cuid())
+  organizationId    String
+  senderId          String
+  ownership         SenderOwnership
+  status            QrSessionStatus @default(CREATED)
+  providerSessionId String?
+  activeKey         String?         @unique
+  credentialRef     String?
+  connectedAt       DateTime?
+  lastSeenAt        DateTime?
+  lastErrorCode     String?
+  lastErrorMessage  String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  revokedAt         DateTime?
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender            Sender          @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, senderId, status])
   @@index([providerSessionId])
@@ -206,15 +250,15 @@ model QrSession {
 }
 
 model QrCredential {
-  id              String        @id
-  organizationId  String
-  senderId        String
-  encryptedCreds  String
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sender          Sender        @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  signalKeys      QrSignalKey[]
+  id             String        @id
+  organizationId String
+  senderId       String
+  encryptedCreds String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender         Sender        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  signalKeys     QrSignalKey[]
 
   @@index([organizationId, senderId])
 }
@@ -234,78 +278,89 @@ model QrSignalKey {
 }
 
 model Contact {
-  id              String        @id @default(cuid())
-  organizationId  String
-  phoneNumber     String
-  phoneNumberE164 String
-  firstName       String?
-  lastName        String?
-  email           String?
-  company         String?
-  customFields    Json?
-  status          ContactStatus @default(ACTIVE)
-  source          String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  consents        ConsentRecord[]
-  campaignTargets CampaignRecipient[]
+  id               String               @id @default(cuid())
+  organizationId   String
+  phoneNumber      String
+  phoneNumberE164  String
+  firstName        String?
+  lastName         String?
+  email            String?
+  company          String?
+  customFields     Json?
+  /// Labels such as Delhi or VIP, used to pick an audience
+  tags             String[]             @default([])
+  status           ContactStatus        @default(ACTIVE)
+  source           String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  consents         ConsentRecord[]
+  campaignTargets  CampaignRecipient[]
   groupMemberships ContactGroupMember[]
+
+  inboundMessages InboundMessage[]
 
   @@unique([organizationId, phoneNumberE164])
   @@index([organizationId, status])
   @@index([organizationId, email])
+  @@index([tags], type: Gin)
 }
 
 model ConsentRecord {
-  id              String        @id @default(cuid())
-  contactId       String
-  channel         String
-  purpose         String
-  status          ConsentStatus @default(UNKNOWN)
-  source          String?
-  evidenceRef     String?
-  noticeVersion   String?
-  grantedAt       DateTime?
-  withdrawnAt    DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  contact         Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  id            String        @id @default(cuid())
+  contactId     String
+  channel       String
+  purpose       String
+  status        ConsentStatus @default(UNKNOWN)
+  source        String?
+  evidenceRef   String?
+  noticeVersion String?
+  grantedAt     DateTime?
+  withdrawnAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  contact       Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@index([contactId, channel, purpose, status])
 }
 
 model Campaign {
-  id              String         @id @default(cuid())
-  organizationId  String
-  senderId        String?
-  name            String
-  description     String?
-  messageBody     String?
-  status          CampaignStatus @default(DRAFT)
-  channel         String         @default("WHATSAPP")
-  scheduledAt     DateTime?
-  startedAt       DateTime?
-  completedAt     DateTime?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sender          Sender?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
-  recipients      CampaignRecipient[]
-  messages        Message[]
+  id             String              @id @default(cuid())
+  organizationId String
+  senderId       String?
+  name           String
+  description    String?
+  messageBody    String?
+  mediaAssetId   String?
+  /// The campaign's unique number: the client's number and CP<serial>, for example BPML/2026/NR001/CP0007
+  campaignCode   String?             @unique
+  /// Other senders that share this campaign with senderId (messages are dealt out to all of them in turn)
+  extraSenderIds String[]            @default([])
+  status         CampaignStatus      @default(DRAFT)
+  channel        String              @default("WHATSAPP")
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender         Sender?             @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  mediaAsset     MediaAsset?         @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  recipients     CampaignRecipient[]
+  messages       Message[]
 
   @@index([organizationId, status, scheduledAt])
   @@index([senderId, status])
 }
 
 model CampaignRecipient {
-  id          String    @id @default(cuid())
-  campaignId  String
-  contactId   String
-  status      String    @default("PENDING")
-  createdAt   DateTime  @default(now())
-  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  campaignId String
+  contactId  String
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, contactId])
   @@index([campaignId, status])
@@ -319,16 +374,19 @@ model Message {
   senderId          String?
   recipientE164     String
   body              String?
+  mediaAssetId      String?
+  /// CAMPAIGN, or TEST for a message the owner sends to the sender's own number to see how a campaign looks
+  kind              String        @default("CAMPAIGN")
   status            MessageStatus @default(QUEUED)
   idempotencyKey    String
   chargePaise       Int           @default(0)
   providerMessageId String?
   attemptCount      Int           @default(0)
   maxAttempts       Int           @default(5)
-  nextAttemptAt    DateTime      @default(now())
-  lockedAt         DateTime?
-  lockToken        String?
-  lastAttemptAt    DateTime?
+  nextAttemptAt     DateTime      @default(now())
+  lockedAt          DateTime?
+  lockToken         String?
+  lastAttemptAt     DateTime?
   errorCode         String?
   errorMessage      String?
   submittedAt       DateTime?
@@ -338,6 +396,7 @@ model Message {
   updatedAt         DateTime      @updatedAt
   campaign          Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   sender            Sender?       @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  mediaAsset        MediaAsset?   @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, idempotencyKey])
   @@index([organizationId, status, createdAt])
@@ -347,25 +406,24 @@ model Message {
 }
 
 model AuditLog {
-  id              String         @id @default(cuid())
-  organizationId  String
-  actorUserId     String?
-  actorType       AuditActorType @default(USER)
-  action          String
-  resourceType    String
-  resourceId      String?
-  ipAddress       String?
-  userAgent       String?
-  metadata        Json?
-  createdAt       DateTime       @default(now())
-  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  actor           User?          @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  id             String         @id @default(cuid())
+  organizationId String
+  actorUserId    String?
+  actorType      AuditActorType @default(USER)
+  action         String
+  resourceType   String
+  resourceId     String?
+  ipAddress      String?
+  userAgent      String?
+  metadata       Json?
+  createdAt      DateTime       @default(now())
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor          User?          @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
   @@index([resourceType, resourceId])
   @@index([actorUserId, createdAt])
 }
-
 
 enum QrDeliveryStatus {
   SENT
@@ -375,29 +433,28 @@ enum QrDeliveryStatus {
 }
 
 model QrDeliveryReceipt {
-  id               String           @id @default(cuid())
-  organizationId   String
-  senderId         String
+  id                String           @id @default(cuid())
+  organizationId    String
+  senderId          String
   providerMessageId String
-  status           QrDeliveryStatus
-  receivedAt       DateTime         @default(now())
-  appliedAt        DateTime?
-  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sender           Sender           @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  status            QrDeliveryStatus
+  receivedAt        DateTime         @default(now())
+  appliedAt         DateTime?
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender            Sender           @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, senderId, providerMessageId])
   @@index([organizationId, senderId, appliedAt])
 }
 
-
 model ContactGroup {
-  id             String              @id @default(cuid())
+  id             String               @id @default(cuid())
   organizationId String
   name           String
   description    String?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   members        ContactGroupMember[]
 
   @@unique([organizationId, name])
@@ -416,9 +473,8 @@ model ContactGroupMember {
   @@index([contactId])
 }
 
-
 model ProviderDeliveryReceipt {
-  id                String                 @id @default(cuid())
+  id                String           @id @default(cuid())
   organizationId    String
   senderId          String
   providerMessageId String
@@ -426,51 +482,49 @@ model ProviderDeliveryReceipt {
   eventTimestamp    DateTime
   errorCode         String?
   errorMessage      String?
-  receivedAt        DateTime               @default(now())
+  receivedAt        DateTime         @default(now())
   appliedAt         DateTime?
-  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sender            Sender                 @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender            Sender           @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, senderId, providerMessageId, status, eventTimestamp])
   @@index([organizationId, senderId, providerMessageId, appliedAt])
 }
 
-
 model CreditAccount {
-  id              String       @id @default(cuid())
-  organizationId  String       @unique
-  balancePaise    Int          @default(0)
-  pricePerMessagePaise Int     @default(10)
-  defaultIntervalSeconds Int   @default(60)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  transactions    CreditTransaction[]
+  id                     String              @id @default(cuid())
+  organizationId         String              @unique
+  balancePaise           Int                 @default(0)
+  pricePerMessagePaise   Int                 @default(10)
+  defaultIntervalSeconds Int                 @default(60)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  organization           Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transactions           CreditTransaction[]
 
   @@index([updatedAt])
 }
 
 model CreditTransaction {
-  id              String                @id @default(cuid())
-  organizationId  String
-  accountId       String
-  type            CreditTransactionType
-  amountPaise     Int
-  balanceAfterPaise Int
+  id                   String                @id @default(cuid())
+  organizationId       String
+  accountId            String
+  type                 CreditTransactionType
+  amountPaise          Int
+  balanceAfterPaise    Int
   pricePerMessagePaise Int?
-  messageCount    Int?
-  reference       String?
-  description     String?
-  actorUserId     String?
-  createdAt       DateTime              @default(now())
-  organization    Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  account         CreditAccount         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  messageCount         Int?
+  reference            String?
+  description          String?
+  actorUserId          String?
+  createdAt            DateTime              @default(now())
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account              CreditAccount         @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt])
   @@index([accountId, createdAt])
   @@index([reference])
 }
-
 
 model OrganizationInvite {
   id              String       @id @default(cuid())
@@ -486,4 +540,81 @@ model OrganizationInvite {
 
   @@index([organizationId, createdAt])
   @@index([organizationId, email])
+}
+
+/// A message that a customer sent to one of the workspace's numbers (a reply).
+model InboundMessage {
+  id                String       @id @default(cuid())
+  organizationId    String
+  senderId          String
+  contactId         String?
+  fromE164          String
+  body              String
+  providerMessageId String
+  /// true when the reply was an opt-out word (STOP ...) and consent was withdrawn because of it
+  isOptOut          Boolean      @default(false)
+  readAt            DateTime?
+  receivedAt        DateTime     @default(now())
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender            Sender       @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  contact           Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, senderId, providerMessageId])
+  @@index([organizationId, receivedAt])
+  @@index([organizationId, fromE164])
+}
+
+enum AuthTokenKind {
+  PASSWORD_RESET
+  EMAIL_VERIFY
+  /// a 6-digit code e-mailed to confirm a password change (only a hash is kept, with a limit on wrong guesses)
+  PASSWORD_OTP
+}
+
+/// A single-use link sent by e-mail (reset a password, verify an e-mail address). Only a hash of the token is kept.
+model AuthToken {
+  id        String        @id @default(cuid())
+  userId    String
+  kind      AuthTokenKind
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int           @default(0)
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind])
+}
+
+/// A top-up of the prepaid balance paid online. When it is paid, the balance is credited and an invoice is issued.
+model PaymentOrder {
+  id                String       @id @default(cuid())
+  organizationId    String
+  amountPaise       Int
+  status            String       @default("CREATED")
+  provider          String       @default("RAZORPAY")
+  providerOrderId   String?      @unique
+  providerPaymentId String?
+  createdByUserId   String?
+  createdAt         DateTime     @default(now())
+  paidAt            DateTime?
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice           Invoice?
+
+  @@index([organizationId, createdAt])
+}
+
+/// A receipt for credit that was bought: BPML/<year>/NR<serial>/INV<serial>.
+model Invoice {
+  id             String        @id @default(cuid())
+  organizationId String
+  invoiceNumber  String        @unique
+  amountPaise    Int
+  description    String
+  issuedAt       DateTime      @default(now())
+  paymentOrderId String?       @unique
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  paymentOrder   PaymentOrder? @relation(fields: [paymentOrderId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, issuedAt])
 }

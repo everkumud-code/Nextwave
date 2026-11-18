@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthContext, isPlatformAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { MessageStatus } from "@prisma/client";
+import { parseFormat, tableResponse } from "@/lib/table-output";
 
 export const runtime = "nodejs";
 const statuses = new Set(Object.values(MessageStatus));
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
   const messages = await prisma.message.findMany({
     where: {
       organizationId,
+      kind: "CAMPAIGN",                    // test messages to the sender's own number are not part of the report
       ...(statusParam ? { status: statusParam as MessageStatus } : {}),
       ...(campaignId ? { campaignId } : {}),
       ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
@@ -40,21 +42,23 @@ export async function GET(request: Request) {
       recipientE164: true, body: true, status: true, chargePaise: true,
       createdAt: true, submittedAt: true, deliveredAt: true, readAt: true,
       providerMessageId: true, errorCode: true, errorMessage: true,
-      campaign: { select: { name: true } },
+      campaign: { select: { name: true, campaignCode: true } },
       sender: { select: { displayName: true, phoneNumberE164: true } },
     },
   });
-  const header = ["campaign","sender_name","sender_phone","recipient_phone","message","status","charge_paise","created_at","submitted_at","delivered_at","read_at","provider_message_id","error_code","error_message"];
+  const client = await prisma.organization.findUnique({ where: { id: organizationId }, select: { clientCode: true } });
+  const header = ["client_id","campaign_id","campaign","sender_name","sender_phone","recipient_phone","message","status","charge_paise","created_at","submitted_at","delivered_at","read_at","provider_message_id","error_code","error_message"];
   const rows = messages.map(m => [
-    m.campaign?.name,m.sender?.displayName,m.sender?.phoneNumberE164,m.recipientE164,m.body,m.status,m.chargePaise,
+    client?.clientCode,m.campaign?.campaignCode,m.campaign?.name,m.sender?.displayName,m.sender?.phoneNumberE164,m.recipientE164,m.body,m.status,m.chargePaise,
     m.createdAt.toISOString(),m.submittedAt?.toISOString(),m.deliveredAt?.toISOString(),m.readAt?.toISOString(),
     m.providerMessageId,m.errorCode,m.errorMessage,
-  ].map(csvCell).join(","));
-  return new Response([header.map(csvCell).join(","), ...rows].join("\r\n"), {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="nextwave-message-report.csv"',
-      "Cache-Control": "no-store",
-    },
-  });
+  ]);
+  const format = parseFormat(url.searchParams.get("format"));
+  if (format === "csv") {
+    return new Response([header.map(csvCell).join(","), ...rows.map(row => row.map(csvCell).join(","))].join("\r\n"), {
+      headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="nextwave-message-report.csv"', "Cache-Control": "no-store" },
+    });
+  }
+  // the PDF keeps the columns that fit a page: client, campaign, recipient, message, status, sent / delivered / read times
+  return tableResponse({ format, fileBase: "nextwave-message-report", title: "Message report", header, rows, pdfColumns: [1, 5, 6, 7, 9, 10, 11, 12, 14] });
 }

@@ -64,8 +64,8 @@ export async function getAuthContext() {
       },
       orderBy: { createdAt: "asc" },
       include: {
-        organization: { select: { id: true, name: true, slug: true, timezone: true } },
-        user: { select: { id: true, email: true, name: true, image: true, isPlatformAdmin: true } },
+        organization: { select: { id: true, name: true, slug: true, timezone: true, clientCode: true } },
+        user: { select: { id: true, email: true, name: true, image: true, isPlatformAdmin: true, emailVerified: true } },
       },
     });
     if (!membership) return null;

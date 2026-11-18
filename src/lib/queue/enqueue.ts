@@ -7,11 +7,13 @@ export type EnqueueContact = {
   firstName: string | null;
   lastName: string | null;
   company: string | null;
+  customFields?: unknown;
 };
 
 export type EnqueueInput = {
   organizationId: string;
-  campaign: { id: string; messageBody: string; senderId: string };
+  /** extraSenderIds: more connected senders that share the campaign; messages are dealt out to all of them in turn */
+  campaign: { id: string; messageBody: string; mediaAssetId?: string | null; senderId: string; extraSenderIds?: string[] };
   eligible: EnqueueContact[];
   /** The person who queued the campaign; null when the scheduler does it. */
   actorUserId: string | null;
@@ -65,47 +67,61 @@ export async function enqueueCampaignMessages(tx: Prisma.TransactionClient, inpu
   }
 
   const intervalMs = Math.max(10, Math.min(90, account.defaultIntervalSeconds || 60)) * 1000;
-  const [pendingQueuedCount, latestQueued, latestSubmitted] = await Promise.all([
-    tx.message.count({ where: { organizationId, senderId: campaign.senderId, status: "QUEUED" } }),
-    tx.message.findFirst({
-      where: { organizationId, senderId: campaign.senderId, status: "QUEUED" },
-      orderBy: { nextAttemptAt: "desc" },
-      select: { nextAttemptAt: true },
-    }),
-    tx.message.findFirst({
-      where: { organizationId, senderId: campaign.senderId, status: { in: ["SUBMITTED", "SENT", "DELIVERED", "READ"] }, submittedAt: { not: null } },
-      orderBy: { submittedAt: "desc" },
-      select: { submittedAt: true },
-    }),
-  ]);
-  let firstAttemptAt = new Date(now);
-  if (latestQueued) {
-    const queuedTail = latestQueued.nextAttemptAt > now
-      ? new Date(latestQueued.nextAttemptAt.getTime() + intervalMs)
-      : new Date(now.getTime() + pendingQueuedCount * intervalMs);
-    if (queuedTail > firstAttemptAt) firstAttemptAt = queuedTail;
+  // every sender has its own queue and its own pace (10 to 90 seconds between two of its messages)
+  const senderIds = [...new Set([campaign.senderId, ...(campaign.extraSenderIds ?? [])])];
+  const firstAttemptBySender = new Map<string, Date>();
+  for (const senderId of senderIds) {
+    const [pendingQueuedCount, latestQueued, latestSubmitted] = await Promise.all([
+      tx.message.count({ where: { organizationId, senderId, status: "QUEUED" } }),
+      tx.message.findFirst({
+        where: { organizationId, senderId, status: "QUEUED" },
+        orderBy: { nextAttemptAt: "desc" },
+        select: { nextAttemptAt: true },
+      }),
+      tx.message.findFirst({
+        where: { organizationId, senderId, status: { in: ["SUBMITTED", "SENT", "DELIVERED", "READ"] }, submittedAt: { not: null } },
+        orderBy: { submittedAt: "desc" },
+        select: { submittedAt: true },
+      }),
+    ]);
+    let firstAttemptAt = new Date(now);
+    if (latestQueued) {
+      const queuedTail = latestQueued.nextAttemptAt > now
+        ? new Date(latestQueued.nextAttemptAt.getTime() + intervalMs)
+        : new Date(now.getTime() + pendingQueuedCount * intervalMs);
+      if (queuedTail > firstAttemptAt) firstAttemptAt = queuedTail;
+    }
+    if (latestSubmitted?.submittedAt) {
+      const afterLastSubmission = new Date(latestSubmitted.submittedAt.getTime() + intervalMs);
+      if (afterLastSubmission > firstAttemptAt) firstAttemptAt = afterLastSubmission;
+    }
+    firstAttemptBySender.set(senderId, firstAttemptAt);
   }
-  if (latestSubmitted?.submittedAt) {
-    const afterLastSubmission = new Date(latestSubmitted.submittedAt.getTime() + intervalMs);
-    if (afterLastSubmission > firstAttemptAt) firstAttemptAt = afterLastSubmission;
-  }
+  const sentBySender = new Map<string, number>();
 
-  const messages = eligible.map((contact, index) => ({
+  const messages = eligible.map((contact, index) => {
+    const senderId = senderIds[index % senderIds.length];
+    const turn = sentBySender.get(senderId) ?? 0;
+    sentBySender.set(senderId, turn + 1);
+    return {
     organizationId,
     campaignId: campaign.id,
-    senderId: campaign.senderId,
+    mediaAssetId: campaign.mediaAssetId ?? null,
+    senderId,
     recipientE164: contact.phoneNumberE164,
     body: renderMessageTemplate(campaign.messageBody, {
       firstName: contact.firstName,
       lastName: contact.lastName,
       company: contact.company,
       phoneNumber: contact.phoneNumberE164,
+      custom: contact.customFields,
     }),
     status: "QUEUED" as const,
     idempotencyKey: `campaign:${campaign.id}:contact:${contact.id}`,
     chargePaise: account.pricePerMessagePaise,
-    nextAttemptAt: new Date(firstAttemptAt.getTime() + index * intervalMs),
-  }));
+    nextAttemptAt: new Date(firstAttemptBySender.get(senderId)!.getTime() + turn * intervalMs),
+    };
+  });
   const created = await tx.message.createMany({ data: messages, skipDuplicates: true });
   const actualChargePaise = created.count * account.pricePerMessagePaise;
   let balanceAfterPaise = account.balancePaise;

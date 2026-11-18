@@ -19,10 +19,10 @@ export async function GET(request: Request) {
   const includeContacts = new URL(request.url).searchParams.get("includeContacts") === "1";
   const contacts = includeContacts && eligibleIds.length
     ? await prisma.contact.findMany({
-        where: { organizationId: context.organization.id, id: { in: eligibleIds.slice(0, 5000) } },
-        select: { id: true, phoneNumberE164: true, firstName: true, lastName: true, email: true, company: true },
+        where: { organizationId: context.organization.id, id: { in: eligibleIds.slice(0, 50000) } },
+        select: { id: true, phoneNumberE164: true, firstName: true, lastName: true, email: true, company: true, tags: true },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: 5000,
+        take: 50000,
       })
     : undefined;
 

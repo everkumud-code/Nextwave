@@ -6,6 +6,7 @@ import makeWASocket, {
   DisconnectReason,
   initAuthCreds,
   makeCacheableSignalKeyStore,
+  type AnyMessageContent,
   type AuthenticationCreds,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
@@ -13,6 +14,7 @@ import pino from "pino";
 import { PrismaClient } from "@prisma/client";
 import { highestReceiptStatus, receiptCanAdvance, type QrDeliveryStatus } from "./receipt-status.js";
 import { e164FromJid, isOptOutText, recordOptOut } from "./optout.js";
+import { describeInbound, recordInbound } from "./inbound.js";
 
 const prisma = new PrismaClient();
 const logger = pino({ level: process.env.QR_LOG_LEVEL || "silent" });
@@ -286,8 +288,14 @@ async function startSocket(session: RuntimeSession) {
     for (const message of upsert.messages) {
       if (message.key.fromMe) continue;
       const text = message.message?.conversation ?? message.message?.extendedTextMessage?.text;
-      if (!isOptOutText(text)) continue;
       const recipientE164 = e164FromJid(message.key.remoteJid);
+      // every reply is kept in the workspace's inbox (replies from groups and hidden-number addresses are not)
+      const described = describeInbound(message.message);
+      if (recipientE164 && described && message.key.id) {
+        void recordInbound(prisma, { organizationId: session.organizationId, senderId: session.senderId, fromE164: recipientE164, body: described, providerMessageId: message.key.id, isOptOut: isOptOutText(text) })
+          .catch((error) => logger.error({ error }, "Could not store a reply in the inbox"));
+      }
+      if (!isOptOutText(text)) continue;
       if (!recipientE164) continue;
       void recordOptOut(prisma, { organizationId: session.organizationId, recipientE164, evidenceRef: message.key.id ?? null })
         .then((result) => { if (result.applied) logger.info({ organizationId: session.organizationId, cancelledMessages: result.cancelledMessages }, "Contact opted out by reply"); })
@@ -574,14 +582,14 @@ async function sendMessage(body: Record<string, unknown>) {
   const lockToken = typeof body.lockToken === "string" ? body.lockToken : "";
   const consentRecordId = typeof body.consentRecordId === "string" ? body.consentRecordId : "";
 
-  if (!organizationId || !senderId || !idempotencyKey || !lockToken || !consentRecordId || !/^\+[1-9]\d{7,14}$/.test(recipient) || !messageBody.trim() || messageBody.length > 4096) {
+  if (!organizationId || !senderId || !idempotencyKey || !lockToken || !consentRecordId || !/^\+[1-9]\d{7,14}$/.test(recipient) || messageBody.length > 4096) {
     throw Object.assign(new Error("organizationId, senderId, E.164 recipient, message body, idempotencyKey and lockToken are required."), { statusCode: 400, errorCode: "INVALID_MESSAGE" });
   }
 
   const [sender, contact, message] = await Promise.all([
     prisma.sender.findFirst({
       where: { id: senderId, organizationId, connector: "QR_SESSION", status: "CONNECTED", archivedAt: null, organization: { status: "ACTIVE" } },
-      select: { id: true },
+      select: { id: true, phoneNumberE164: true },
     }),
     prisma.contact.findFirst({
       where: { organizationId, phoneNumberE164: recipient, status: "ACTIVE" },
@@ -596,19 +604,27 @@ async function sendMessage(body: Record<string, unknown>) {
     }),
     prisma.message.findFirst({
       where: { organizationId, senderId, recipientE164: recipient, idempotencyKey },
-      select: { id: true, status: true, lockToken: true, providerMessageId: true, body: true },
+      select: { id: true, status: true, lockToken: true, providerMessageId: true, body: true, mediaAssetId: true, kind: true },
     }),
   ]);
   if (!message) throw Object.assign(new Error("Queued message was not found for this workspace and sender."), { statusCode: 404, errorCode: "MESSAGE_NOT_FOUND" });
-  if (message.body !== messageBody) throw Object.assign(new Error("Message body does not match the persisted queue job."), { statusCode: 409, errorCode: "MESSAGE_PAYLOAD_MISMATCH" });
+  if ((message.body ?? "") !== messageBody) throw Object.assign(new Error("Message body does not match the persisted queue job."), { statusCode: 409, errorCode: "MESSAGE_PAYLOAD_MISMATCH" });
+  if (!messageBody.trim() && !message.mediaAssetId) throw Object.assign(new Error("A message needs text or a file."), { statusCode: 400, errorCode: "INVALID_MESSAGE" });
   if (message.providerMessageId) return { accepted: true, providerMessageId: message.providerMessageId, state: "SUBMITTED" };
   if (message.status !== "QUEUED" || message.lockToken !== lockToken) {
     throw Object.assign(new Error("Message queue lease is no longer valid."), { statusCode: 409, errorCode: "MESSAGE_LOCK_MISMATCH" });
   }
   if (!sender) throw Object.assign(new Error("Sender is not connected or does not belong to an active workspace."), { statusCode: 409, errorCode: "SENDER_NOT_CONNECTED" });
-  const latestConsent = contact?.consents[0];
-  if (!latestConsent || latestConsent.status !== "GRANTED" || latestConsent.id !== consentRecordId) {
-    throw Object.assign(new Error("Recipient marketing consent is no longer current."), { statusCode: 409, errorCode: "CONSENT_REVOKED" });
+  if (message.kind === "TEST") {
+    // a test goes only to the sender's own number; no one else can be messaged this way
+    if (!sender.phoneNumberE164 || recipient !== sender.phoneNumberE164) {
+      throw Object.assign(new Error("A test message can only go to the sender's own number."), { statusCode: 409, errorCode: "INVALID_RECIPIENT" });
+    }
+  } else {
+    const latestConsent = contact?.consents[0];
+    if (!latestConsent || latestConsent.status !== "GRANTED" || latestConsent.id !== consentRecordId) {
+      throw Object.assign(new Error("Recipient marketing consent is no longer current."), { statusCode: 409, errorCode: "CONSENT_REVOKED" });
+    }
   }
 
   const session = [...sessions.values()].find((item) =>
@@ -617,7 +633,18 @@ async function sendMessage(body: Record<string, unknown>) {
   if (!session?.socket) throw Object.assign(new Error("Sender has no active connected QR session."), { statusCode: 409, errorCode: "SENDER_NOT_CONNECTED" });
 
   const jid = `${recipient.slice(1)}@s.whatsapp.net`;
-  const sent = await session.socket.sendMessage(jid, { text: messageBody });
+  let content: AnyMessageContent = { text: messageBody };
+  if (message.mediaAssetId) {
+    const asset = await prisma.mediaAsset.findFirst({ where: { id: message.mediaAssetId, organizationId }, select: { kind: true, mimeType: true, filename: true, data: true } });
+    if (!asset) throw Object.assign(new Error("The file of this message was not found."), { statusCode: 409, errorCode: "MEDIA_NOT_FOUND" });
+    const buffer = Buffer.from(asset.data);
+    const caption = messageBody.trim() || undefined;
+    if (asset.kind === "IMAGE") content = { image: buffer, caption, mimetype: asset.mimeType };
+    else if (asset.kind === "VIDEO") content = { video: buffer, caption, mimetype: asset.mimeType };
+    else if (asset.kind === "AUDIO") content = { audio: buffer, mimetype: asset.mimeType, ptt: false };
+    else content = { document: buffer, mimetype: "application/pdf", fileName: asset.filename, caption };
+  }
+  const sent = await session.socket.sendMessage(jid, content);
   const providerMessageId = sent?.key?.id;
   if (!providerMessageId) throw Object.assign(new Error("Messaging runtime did not return a provider message identifier."), { statusCode: 502, errorCode: "TEMPORARY_PROVIDER_ERROR" });
 

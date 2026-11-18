@@ -19,7 +19,7 @@ export async function GET() {
     prisma.sender.count({ where: { organizationId, archivedAt: null } }),
     prisma.sender.count({ where: { organizationId, archivedAt: null, status: "CONNECTED" } }),
     prisma.campaign.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true } }),
-    prisma.message.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true } }),
+    prisma.message.groupBy({ by: ["status"], where: { organizationId, kind: "CAMPAIGN" }, _count: { _all: true } }),
     prisma.$queryRaw<DailyStat[]>`
       SELECT date_trunc('day', "createdAt") AS day,
         COUNT(*)::int AS total,
@@ -27,7 +27,7 @@ export async function GET() {
         COUNT(*) FILTER (WHERE "status" = 'FAILED')::int AS failed,
         COUNT(*) FILTER (WHERE "status" = 'READ')::int AS read
       FROM "Message"
-      WHERE "organizationId" = ${organizationId} AND "createdAt" >= ${since}
+      WHERE "organizationId" = ${organizationId} AND "kind" = 'CAMPAIGN' AND "createdAt" >= ${since}
       GROUP BY date_trunc('day', "createdAt")
       ORDER BY day ASC
     `,

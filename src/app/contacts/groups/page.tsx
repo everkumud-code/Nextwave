@@ -37,14 +37,14 @@ export default function ContactGroupsPage() {
       const all: Contact[] = [...firstPage.contacts];
       let cursor: string | null = firstPage.nextCursor ?? null;
       let pages = 0;
-      while (cursor && all.length < 5000 && pages < 100) {
+      while (cursor && all.length < 50000 && pages < 100) {
         const next = await readJson(await fetch(`/api/contacts?cursor=${encodeURIComponent(cursor)}`, { cache: "no-store" }));
         all.push(...next.contacts);
         cursor = next.nextCursor ?? null;
         pages++;
       }
       setGroups(groupData.groups);
-      setContacts(all.slice(0, 5000));
+      setContacts(all.slice(0, 50000));
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to load contact groups."); }
     finally { setLoading(false); }
   }, []);

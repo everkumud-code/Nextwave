@@ -15,7 +15,7 @@ export async function GET(_request: Request, route: RouteContext) {
       id: true, name: true, description: true, createdAt: true, updatedAt: true,
       members: {
         orderBy: { createdAt: "asc" },
-        take: 5000,
+        take: 50000,
         select: {
           contact: {
             select: { id: true, firstName: true, lastName: true, phoneNumberE164: true, email: true, company: true, status: true },
@@ -55,8 +55,8 @@ export async function PATCH(request: Request, route: RouteContext) {
 
     let contactIds: string[] | undefined;
     if (body.contactIds !== undefined) {
-      if (!Array.isArray(body.contactIds) || body.contactIds.length > 5000 || body.contactIds.some((id: unknown) => typeof id !== "string")) {
-        return NextResponse.json({ error: "Select up to 5,000 contacts for this group." }, { status: 400 });
+      if (!Array.isArray(body.contactIds) || body.contactIds.length > 50000 || body.contactIds.some((id: unknown) => typeof id !== "string")) {
+        return NextResponse.json({ error: "Select up to 50,000 contacts for this group." }, { status: 400 });
       }
       contactIds = [...new Set(body.contactIds as string[])];
       const ownedCount = contactIds.length ? await prisma.contact.count({
@@ -88,7 +88,7 @@ export async function PATCH(request: Request, route: RouteContext) {
         },
       });
       return updated;
-    });
+    }, { maxWait: 10_000, timeout: 120_000 });
     return NextResponse.json({ group });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
@@ -121,6 +121,6 @@ export async function DELETE(_request: Request, route: RouteContext) {
         metadata: { name: existing.name },
       },
     });
-  });
+  }, { maxWait: 10_000, timeout: 120_000 });
   return NextResponse.json({ deleted: true });
 }

@@ -139,7 +139,7 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         job.senderId ? prisma.sender.findFirst({
           where: { id: job.senderId, organizationId: job.organizationId, archivedAt: null },
           select: {
-            id: true, connector: true, status: true, createdAt: true, updatedAt: true,
+            id: true, connector: true, status: true, createdAt: true, updatedAt: true, phoneNumberE164: true, dailyLimitOverride: true,
             organization: { select: { timezone: true } },
             sessions: { where: { connectedAt: { not: null } }, orderBy: { connectedAt: "asc" }, take: 1, select: { connectedAt: true } },
           },
@@ -172,11 +172,18 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         if (job.campaignId && awayMs > 5 * 60_000) await autoPauseCampaign(job.organizationId, job.campaignId, "The assigned sender has been disconnected for more than five minutes. Reconnect it, then resume.");
         continue;
       }
-      if (!contact || contact.status !== "ACTIVE" || !hasCurrentMarketingConsent(contact.consents)) {
+      const isTest = job.kind === "TEST";
+      if (isTest) {
+        // a test is only ever sent to the sender's own number (the "message yourself" chat): no third person is messaged
+        if (!sender.phoneNumberE164 || job.recipientE164 !== sender.phoneNumberE164) {
+          await fail("INVALID_RECIPIENT", "A test message can only go to the sender's own number.", false);
+          continue;
+        }
+      } else if (!contact || contact.status !== "ACTIVE" || !hasCurrentMarketingConsent(contact.consents)) {
         await fail("CONSENT_REVOKED", "The recipient is no longer eligible under the current contact and consent state.", false);
         continue;
       }
-      if (!job.body) {
+      if (!job.body && !job.mediaAssetId) {
         await fail("INVALID_MESSAGE", "Message body is empty.", false);
         continue;
       }
@@ -187,7 +194,7 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
 
       // today's allowance for this number (it grows with the days since the number was first connected)
       const timeZone = sender.organization.timezone;
-      const allowance = dailyLimitForAge(daysSince(sender.sessions[0]?.connectedAt ?? sender.createdAt, new Date()));
+      const allowance = sender.dailyLimitOverride ?? dailyLimitForAge(daysSince(sender.sessions[0]?.connectedAt ?? sender.createdAt, new Date()));
       const sentToday = await prisma.message.count({
         where: { organizationId: job.organizationId, senderId: sender.id, status: { in: ["SUBMITTED", "SENT", "DELIVERED", "READ"] }, submittedAt: { gte: startOfLocalDay(new Date(), timeZone) } },
       });
@@ -208,10 +215,10 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         senderId: sender.id,
         organizationId: job.organizationId,
         recipient: job.recipientE164,
-        body: job.body,
+        body: job.body ?? "",
         idempotencyKey: job.idempotencyKey,
         lockToken: job.lockToken,
-        consentRecordId: contact.consents[0].id,
+        consentRecordId: isTest ? "TEST" : contact!.consents[0].id,
       });
 
       if (!sendResult.accepted || sendResult.state === "FAILED") {
@@ -228,7 +235,7 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         providerMessageId: sendResult.providerMessageId,
       });
       if (updated.count) {
-        if (job.campaignId) {
+        if (job.campaignId && contact) {
           await prisma.campaignRecipient.updateMany({
             where: { campaignId: job.campaignId, contactId: contact.id, status: "QUEUED" },
             data: { status: "SUBMITTED" },

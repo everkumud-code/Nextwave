@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
 import { assertAuthConfigured, createSession } from "@/lib/auth";
+import { nextClientCode } from "@/lib/ids";
+import { sendVerificationEmail } from "@/lib/auth-tokens";
 
 export const runtime = "nodejs";
 
@@ -32,7 +34,7 @@ export async function POST(request: Request) {
         select: { id: true, email: true, name: true },
       });
       const organization = await tx.organization.create({
-        data: { name: organizationName, slug },
+        data: { name: organizationName, slug, clientCode: await nextClientCode(tx) },
       });
       await tx.creditAccount.create({ data: { organizationId: organization.id } });
       await tx.membership.create({
@@ -47,6 +49,7 @@ export async function POST(request: Request) {
     });
 
     await createSession(user.id);
+    void sendVerificationEmail({ id: user.id, email: user.email, name: user.name }, request).catch(() => undefined);
     return NextResponse.json({ user, organization: { name: organizationName, slug } }, { status: 201 });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "P2002") {

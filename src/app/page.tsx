@@ -5,11 +5,12 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { SenderConnection } from "@/components/sender-connection";
 import { BrandLogo } from "@/components/brand-logo";
-import { Activity, Building2, Check, ChevronDown, CircleHelp, Contact, FileText, LayoutDashboard, LogOut, Menu, MessageSquare, Plus, Search, Send, Settings, ShieldCheck, Users, Wallet, X, Pencil, Archive, RefreshCw, RadioTower } from "lucide-react";
+import { Activity, Building2, Check, ChevronDown, CircleHelp, Contact, FileText, LayoutDashboard, LogOut, Menu, MessageSquare, Plus, Search, Send, Settings, ShieldCheck, Users, Wallet, X, Pencil, Archive, RefreshCw, RadioTower, KeyRound } from "lucide-react";
 
 type AuthContext = {
-  user: { id: string; name: string | null; email: string; image?: string | null; isPlatformAdmin: boolean };
-  organization: { id: string; name: string; slug: string; timezone: string };
+  user: { id: string; name: string | null; email: string; image?: string | null; isPlatformAdmin: boolean; emailVerified?: string | null };
+  mailEnabled?: boolean;
+  organization: { id: string; name: string; slug: string; timezone: string; clientCode?: string | null };
   role: string;
 };
 type Sender = {
@@ -48,6 +49,8 @@ async function readJson(response: Response) {
 
 export default function Home() {
   const [auth, setAuth] = useState<AuthContext | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
+  const [unreadReplies, setUnreadReplies] = useState(0);
   const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState<"login" | "register">("register");
   const [authError, setAuthError] = useState("");
@@ -87,6 +90,20 @@ export default function Home() {
   }, []);
 
   useEffect(() => { if (auth) void loadSenders(); }, [auth, loadSenders]);
+  useEffect(() => {
+    let alive = true;
+    const run = async () => {
+      try {
+        const response = await fetch("/api/inbox?count=1", { cache: "no-store" });
+        if (response.ok && alive) setUnreadReplies((await response.json()).unread ?? 0);
+      } catch { /* the badge is a nicety */ }
+    };
+    if (!auth) return undefined;
+    void run();
+    const timer = window.setInterval(run, 30000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [auth]);
+
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -186,6 +203,7 @@ export default function Home() {
             {authMode === "register" && <><Field label="Your name"><input required value={authForm.name} onChange={e=>setAuthForm({...authForm,name:e.target.value})} placeholder="Full name" className={fieldClass}/></Field><Field label="Workspace name"><input required value={authForm.organizationName} onChange={e=>setAuthForm({...authForm,organizationName:e.target.value})} placeholder="Company or agency name" className={fieldClass}/></Field></>}
             <Field label="Work email"><input required type="email" autoComplete="email" value={authForm.email} onChange={e=>setAuthForm({...authForm,email:e.target.value})} placeholder="you@company.com" className={fieldClass}/></Field>
             <Field label="Password"><input required type="password" minLength={authMode === "register" ? 10 : 1} autoComplete={authMode === "register" ? "new-password" : "current-password"} value={authForm.password} onChange={e=>setAuthForm({...authForm,password:e.target.value})} placeholder={authMode === "register" ? "At least 10 characters" : "Your password"} className={fieldClass}/></Field>
+            {authMode === "login" && <p className="-mt-2 text-right text-xs"><a href="/forgot-password" className="font-semibold text-[#0A78CC] hover:underline">Forgot password?</a></p>}
             {authError && <p className="rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-700">{authError}</p>}
             <button disabled={authBusy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0A78CC] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#085FA3] disabled:opacity-60">{authBusy ? <RefreshCw size={16} className="animate-spin"/> : <Check size={16}/>} {authMode === "register" ? "Create workspace" : "Sign in"}</button>
           </form>
@@ -196,22 +214,37 @@ export default function Home() {
     </main>
   );
 
+  async function resendVerification() {
+    try {
+      const response = await fetch("/api/auth/resend-verification", { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      window.alert(response.ok ? "We have sent the e-mail. Please check your inbox and spam folder." : (data.error || "The e-mail could not be sent."));
+    } catch { window.alert("The e-mail could not be sent."); }
+  }
+
+  const sidebarBody = (<>
+        <div className="flex h-[76px] items-center border-b border-slate-100 px-6"><BrandLogo className="h-10 w-auto" /></div>
+        <div className="border-b border-slate-100 px-6 py-3"><p className="text-[10px] font-semibold uppercase tracking-[.14em] text-slate-400">Client ID</p><p className="mt-0.5 select-all font-mono text-xs font-semibold text-slate-700">{auth.organization.clientCode ?? "-"}</p></div>
+        <div className="px-4 pt-5"><div className="flex items-center gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><Building2 size={16}/></span><span className="min-w-0"><span className="block truncate text-xs font-semibold text-slate-800">{auth.organization.name}</span><span className="block text-[10px] text-slate-400">{auth.role.toLowerCase()} workspace</span></span><ChevronDown size={14} className="ml-auto text-slate-400"/></div></div>
+        <nav className="flex-1 space-y-6 px-3 py-6">
+          <div><p className="mb-2 px-3 text-[10px] font-bold tracking-[.15em] text-slate-400">WORKSPACE</p><Link href="/analytics" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><LayoutDashboard size={17}/>Overview</Link><NavItem icon={RadioTower} label="Sender Manager" active count={String(senders.length)}/><Link href="/campaigns" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><Send size={17}/>Campaigns</Link><Link href="/contacts" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><Contact size={17}/>Contacts</Link><Link href="/reports" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><FileText size={17}/>Reports & Downloads</Link><NavItem icon={FileText} label="Templates" disabled/><Link href="/inbox" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><MessageSquare size={17}/>Replies{unreadReplies > 0 && <span className="ml-auto rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-bold text-white">{unreadReplies}</span>}</Link></div>
+          <div><p className="mb-2 px-3 text-[10px] font-bold tracking-[.15em] text-slate-400">MANAGE</p><Link href="/change-password" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><KeyRound size={17}/>Change password</Link><Link href="/billing" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><Wallet size={17}/>Credits & Usage</Link>{(auth.role === "OWNER" || auth.role === "ADMIN") && <Link href="/team" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><Users size={17}/>Team & Access</Link>}{auth.user.isPlatformAdmin && <><Link href="/admin/credits" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-emerald-800 transition hover:bg-emerald-50"><ShieldCheck size={17}/>Platform Admin</Link><Link href="/admin/operations" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-emerald-800 transition hover:bg-emerald-50"><RadioTower size={17}/>Client Operations</Link></>}<NavItem icon={Settings} label="Settings" disabled/></div>
+        </nav>
+        <div className="border-t border-slate-100 p-4"><div className="rounded-xl bg-[#F2F7FC] p-3"><div className="flex items-center gap-2 text-xs font-semibold text-[#0A78CC]"><ShieldCheck size={15}/> Workspace protected</div><p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">Your sender records are isolated to this organisation.</p></div><button className="mt-3 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs text-slate-500"><CircleHelp size={15}/> Help & support</button></div>
+      </>);
+
   return (
     <div className="min-h-screen bg-[#F2F7FC]">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-[248px] flex-col border-r border-slate-200 bg-white lg:flex">
-        <div className="flex h-[76px] items-center border-b border-slate-100 px-6"><BrandLogo className="h-10 w-auto" /></div>
-        <div className="px-4 pt-5"><div className="flex items-center gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-700"><Building2 size={16}/></span><span className="min-w-0"><span className="block truncate text-xs font-semibold text-slate-800">{auth.organization.name}</span><span className="block text-[10px] text-slate-400">{auth.role.toLowerCase()} workspace</span></span><ChevronDown size={14} className="ml-auto text-slate-400"/></div></div>
-        <nav className="flex-1 space-y-6 px-3 py-6">
-          <div><p className="mb-2 px-3 text-[10px] font-bold tracking-[.15em] text-slate-400">WORKSPACE</p><Link href="/analytics" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><LayoutDashboard size={17}/>Overview</Link><NavItem icon={RadioTower} label="Sender Manager" active count={String(senders.length)}/><Link href="/campaigns" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><Send size={17}/>Campaigns</Link><Link href="/contacts" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><Contact size={17}/>Contacts</Link><Link href="/reports" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><FileText size={17}/>Reports & Downloads</Link><NavItem icon={FileText} label="Templates" disabled/><NavItem icon={MessageSquare} label="Team Inbox" disabled/></div>
-          <div><p className="mb-2 px-3 text-[10px] font-bold tracking-[.15em] text-slate-400">MANAGE</p><Link href="/billing" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><Wallet size={17}/>Credits & Usage</Link>{(auth.role === "OWNER" || auth.role === "ADMIN") && <Link href="/team" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50"><Users size={17}/>Team & Access</Link>}{auth.user.isPlatformAdmin && <><Link href="/admin/credits" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-emerald-800 transition hover:bg-emerald-50"><ShieldCheck size={17}/>Platform Admin</Link><Link href="/admin/operations" className="mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-emerald-800 transition hover:bg-emerald-50"><RadioTower size={17}/>Client Operations</Link></>}<NavItem icon={Settings} label="Settings" disabled/></div>
-        </nav>
-        <div className="border-t border-slate-100 p-4"><div className="rounded-xl bg-[#F2F7FC] p-3"><div className="flex items-center gap-2 text-xs font-semibold text-[#0A78CC]"><ShieldCheck size={15}/> Workspace protected</div><p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">Your sender records are isolated to this organisation.</p></div><button className="mt-3 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-xs text-slate-500"><CircleHelp size={15}/> Help & support</button></div>
+        {sidebarBody}
       </aside>
+      {navOpen && <div className="fixed inset-0 z-40 lg:hidden"><div className="absolute inset-0 bg-slate-950/40" onClick={() => setNavOpen(false)} aria-hidden="true"/><aside className="absolute inset-y-0 left-0 flex w-[280px] max-w-[85vw] flex-col overflow-y-auto bg-white shadow-2xl" onClick={() => setNavOpen(false)}><div className="flex justify-end px-3 pt-3"><button aria-label="Close menu" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18}/></button></div>{sidebarBody}</aside></div>}
 
       <main className="min-h-screen lg:pl-[248px]">
-        <header className="sticky top-0 z-10 flex h-[76px] items-center justify-between border-b border-slate-200/80 bg-white/90 px-5 backdrop-blur-xl md:px-8"><div className="flex items-center gap-3"><button className="rounded-lg p-2 text-slate-500 lg:hidden"><Menu size={20}/></button><div><div className="flex items-center gap-2 text-xs text-slate-400"><span>Workspace</span><span>/</span><span className="text-slate-700">Sender Manager</span></div><h1 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Sender Manager</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-xs font-semibold text-slate-800">{auth.user.name || auth.user.email}</p><p className="text-[10px] text-slate-400">{auth.user.email}</p></div><div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E3EEF9] text-xs font-bold text-[#0A78CC]">{(auth.user.name || auth.user.email).slice(0,2).toUpperCase()}</div><button onClick={signOut} title="Sign out" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><LogOut size={17}/></button></div></header>
+        <header className="sticky top-0 z-10 flex h-[76px] items-center justify-between border-b border-slate-200/80 bg-white/90 px-5 backdrop-blur-xl md:px-8"><div className="flex items-center gap-3"><button aria-label="Open menu" onClick={() => setNavOpen(true)} className="rounded-lg p-2 text-slate-500 lg:hidden"><Menu size={20}/></button><div><div className="flex items-center gap-2 text-xs text-slate-400"><span>Workspace</span><span>/</span><span className="text-slate-700">Sender Manager</span></div><h1 className="mt-1 text-lg font-semibold tracking-tight text-slate-900">Sender Manager</h1></div></div><div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-xs font-semibold text-slate-800">{auth.user.name || auth.user.email}</p><p className="text-[10px] text-slate-400">{auth.user.email}</p></div><div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E3EEF9] text-xs font-bold text-[#0A78CC]">{(auth.user.name || auth.user.email).slice(0,2).toUpperCase()}</div><button onClick={signOut} title="Sign out" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><LogOut size={17}/></button></div></header>
 
         <div className="mx-auto max-w-[1450px] p-5 md:p-8">
+          {auth.mailEnabled && !auth.user.emailVerified && <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><span>Please confirm your e-mail address ({auth.user.email}). Until then you cannot send campaigns. We sent you a link.</span><button onClick={() => void resendVerification()} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white">Send the e-mail again</button></div>}
           <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="text-sm text-slate-500">Manage the messaging accounts in your organisation</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 md:text-[28px]">Your senders</h2><p className="mt-1 text-sm text-slate-500">A live inventory loaded from your workspace database.</p></div><button onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0A78CC] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#085FA3]"><Plus size={16}/> Add sender</button></div>
 
           <div className="grid gap-4 sm:grid-cols-3">

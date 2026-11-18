@@ -22,6 +22,7 @@ export async function GET() {
   });
 
   return NextResponse.json({
+    clientCode: context.organization.clientCode ?? null,
     account: { ...account, balanceRupees: account.balancePaise / 100, pricePerMessageRupees: account.pricePerMessagePaise / 100 },
     transactions,
   });
