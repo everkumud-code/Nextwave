@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
+import { CONTENT_SELECT, campaignPin, campaignTemplate, contentProblem } from "@/lib/campaign-content";
 import { findUnsupportedTemplateVariables } from "@/lib/message-template";
 import { getCustomFieldKeys } from "@/lib/custom-fields";
 import { mediaProblem } from "@/lib/media";
@@ -18,8 +19,8 @@ export async function POST(_request: Request, route: RouteContext) {
   const campaign = await prisma.campaign.findFirst({
     where: { id: campaignId, organizationId: context.organization.id },
     select: {
-      id: true, status: true, name: true, messageBody: true, senderId: true, scheduledAt: true, mediaAssetId: true, mediaAsset: { select: { kind: true } },
-      sender: { select: { organizationId: true, status: true, archivedAt: true } },
+      id: true, status: true, name: true, messageBody: true, senderId: true, scheduledAt: true, mediaAssetId: true, ...CONTENT_SELECT, mediaAsset: { select: { kind: true } },
+      sender: { select: { organizationId: true, status: true, archivedAt: true, connector: true } },
       recipients: { select: { contactId: true } },
     },
   });
@@ -30,7 +31,8 @@ export async function POST(_request: Request, route: RouteContext) {
   if (!campaign.name.trim()) issues.push("Campaign name is missing.");
   const mediaIssue = mediaProblem(campaign.mediaAsset?.kind, campaign.messageBody);
   if (mediaIssue) issues.push(mediaIssue);
-  if (!campaign.messageBody?.trim() && !campaign.mediaAssetId) issues.push("Add a message, or attach a picture, video, audio file or PDF.");
+  const contentIssue = contentProblem(campaign, campaign.sender?.connector);
+  if (contentIssue) issues.push(contentIssue);
   else if (campaign.messageBody?.trim()) {
     const unsupported = findUnsupportedTemplateVariables(campaign.messageBody, await getCustomFieldKeys(context.organization.id));
     if (unsupported.length) issues.push(`Unsupported message variables: ${unsupported.join(", ")}.`);

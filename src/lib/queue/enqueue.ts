@@ -1,5 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { renderMessageTemplate } from "@/lib/message-template";
+import { templateSummary, templateValues, type Pin, type TemplateRef } from "@/lib/campaign-content";
+
+/** An official (Meta Cloud API) number can send about one message a second; a QR number keeps the 10 to 90 second pace. */
+export const OFFICIAL_INTERVAL_MS = 1000;
 
 export type EnqueueContact = {
   id: string;
@@ -13,7 +17,7 @@ export type EnqueueContact = {
 export type EnqueueInput = {
   organizationId: string;
   /** extraSenderIds: more connected senders that share the campaign; messages are dealt out to all of them in turn */
-  campaign: { id: string; messageBody: string; mediaAssetId?: string | null; senderId: string; extraSenderIds?: string[] };
+  campaign: { id: string; messageBody: string; mediaAssetId?: string | null; senderId: string; extraSenderIds?: string[]; location?: Pin | null; template?: TemplateRef | null };
   eligible: EnqueueContact[];
   /** The person who queued the campaign; null when the scheduler does it. */
   actorUserId: string | null;
@@ -66,9 +70,12 @@ export async function enqueueCampaignMessages(tx: Prisma.TransactionClient, inpu
     };
   }
 
-  const intervalMs = Math.max(10, Math.min(90, account.defaultIntervalSeconds || 60)) * 1000;
+  const qrIntervalMs = Math.max(10, Math.min(90, account.defaultIntervalSeconds || 60)) * 1000;
   // every sender has its own queue and its own pace (10 to 90 seconds between two of its messages)
   const senderIds = [...new Set([campaign.senderId, ...(campaign.extraSenderIds ?? [])])];
+  const connectors = await tx.sender.findMany({ where: { id: { in: senderIds } }, select: { id: true, connector: true } });
+  const connectorOf = new Map(connectors.map(item => [item.id, item.connector]));
+  const intervalOf = (id: string) => connectorOf.get(id) === "META_CLOUD_API" ? OFFICIAL_INTERVAL_MS : qrIntervalMs;
   const firstAttemptBySender = new Map<string, Date>();
   for (const senderId of senderIds) {
     const [pendingQueuedCount, latestQueued, latestSubmitted] = await Promise.all([
@@ -87,12 +94,12 @@ export async function enqueueCampaignMessages(tx: Prisma.TransactionClient, inpu
     let firstAttemptAt = new Date(now);
     if (latestQueued) {
       const queuedTail = latestQueued.nextAttemptAt > now
-        ? new Date(latestQueued.nextAttemptAt.getTime() + intervalMs)
-        : new Date(now.getTime() + pendingQueuedCount * intervalMs);
+        ? new Date(latestQueued.nextAttemptAt.getTime() + intervalOf(senderId))
+        : new Date(now.getTime() + pendingQueuedCount * intervalOf(senderId));
       if (queuedTail > firstAttemptAt) firstAttemptAt = queuedTail;
     }
     if (latestSubmitted?.submittedAt) {
-      const afterLastSubmission = new Date(latestSubmitted.submittedAt.getTime() + intervalMs);
+      const afterLastSubmission = new Date(latestSubmitted.submittedAt.getTime() + intervalOf(senderId));
       if (afterLastSubmission > firstAttemptAt) firstAttemptAt = afterLastSubmission;
     }
     firstAttemptBySender.set(senderId, firstAttemptAt);
@@ -109,17 +116,21 @@ export async function enqueueCampaignMessages(tx: Prisma.TransactionClient, inpu
     mediaAssetId: campaign.mediaAssetId ?? null,
     senderId,
     recipientE164: contact.phoneNumberE164,
-    body: renderMessageTemplate(campaign.messageBody, {
-      firstName: contact.firstName,
-      lastName: contact.lastName,
-      company: contact.company,
-      phoneNumber: contact.phoneNumberE164,
-      custom: contact.customFields,
-    }),
+    body: campaign.template
+      ? templateSummary(campaign.template, templateValues(campaign.template.params, { firstName: contact.firstName, lastName: contact.lastName, company: contact.company, phoneNumber: contact.phoneNumberE164, custom: contact.customFields }))
+      : renderMessageTemplate(campaign.messageBody, {
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        company: contact.company,
+        phoneNumber: contact.phoneNumberE164,
+        custom: contact.customFields,
+      }),
+    ...(campaign.location ? { locationJson: { ...campaign.location } } : {}),
+    ...(campaign.template ? { templateJson: { name: campaign.template.name, language: campaign.template.language, params: templateValues(campaign.template.params, { firstName: contact.firstName, lastName: contact.lastName, company: contact.company, phoneNumber: contact.phoneNumberE164, custom: contact.customFields }) } } : {}),
     status: "QUEUED" as const,
     idempotencyKey: `campaign:${campaign.id}:contact:${contact.id}`,
     chargePaise: account.pricePerMessagePaise,
-    nextAttemptAt: new Date(firstAttemptBySender.get(senderId)!.getTime() + turn * intervalMs),
+    nextAttemptAt: new Date(firstAttemptBySender.get(senderId)!.getTime() + turn * intervalOf(senderId)),
     };
   });
   const created = await tx.message.createMany({ data: messages, skipDuplicates: true });

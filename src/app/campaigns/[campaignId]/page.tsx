@@ -7,15 +7,17 @@ import { renderMessageTemplate } from "@/lib/message-template";
 import { ArrowLeft, CalendarClock, Check, Loader2, RefreshCw, Save, Send, Users } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { kindLabel, type MediaKind } from "@/lib/media";
+import { isShortMapsLink, parseMapsLink } from "@/lib/maps-link";
 
 type Contact = { id: string; phoneNumberE164: string; firstName: string | null; lastName: string | null; email: string | null; company: string | null; tags?: string[] };
-type Sender = { id: string; displayName: string; phoneNumberE164: string; status: string };
+type Sender = { id: string; displayName: string; phoneNumberE164: string; status: string; connector?: string };
+type OfficialTemplate = { name: string; language: string; category: string | null; bodyText: string; bodyVariableCount: number; hasHeaderMedia: boolean; hasButtonVariables: boolean };
 type ContactGroup = { id: string; name: string; _count: { members: number } };
 type Validation = { ready: boolean; issues: string[]; checks: { hasMessage: boolean; senderConnected: boolean; selectedRecipients: number; currentlyEligibleRecipients: number; suppressedRecipients: number } };
 type MessageStats = { total: number; queued: number; submitted: number; sent: number; delivered: number; read: number; failed: number; cancelled: number };
 type MessageRecord = { id: string; recipientE164: string; status: string; attemptCount: number; maxAttempts: number; errorCode: string | null; errorMessage: string | null; submittedAt: string | null; deliveredAt: string | null; readAt: string | null; createdAt: string };
 type MediaInfo = { id: string; kind: MediaKind; filename: string; sizeBytes: number };
-type Campaign = { extraSenderIds?: string[]; mediaAsset?: MediaInfo | null; campaignCode?: string | null; id: string; name: string; description: string | null; messageBody: string | null; status: string; scheduledAt: string | null; sender: Sender | null; recipients: { contact: { id: string } }[]; _count: { recipients: number; messages: number } };
+type Campaign = { locationLat?: number | null; locationLng?: number | null; locationName?: string | null; locationAddress?: string | null; templateName?: string | null; templateLanguage?: string | null; templateParams?: string[]; extraSenderIds?: string[]; mediaAsset?: MediaInfo | null; campaignCode?: string | null; id: string; name: string; description: string | null; messageBody: string | null; status: string; scheduledAt: string | null; sender: Sender | null; recipients: { contact: { id: string } }[]; _count: { recipients: number; messages: number } };
 async function readJson(response: Response) { const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Something went wrong."); return data; }
 const field = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
 function localDateTime(value: string | null) {
@@ -36,6 +38,10 @@ export default function CampaignDetailPage() {
   const [contactGroups, setContactGroups] = useState<ContactGroup[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [extraSenders, setExtraSenders] = useState<string[]>([]);
+  const [templates, setTemplates] = useState<OfficialTemplate[]>([]);
+  const [templatesError, setTemplatesError] = useState("");
+  const [tpl, setTpl] = useState<{ name: string; language: string; params: string[] } | null>(null);
+  const [pin, setPin] = useState({ lat: "", lng: "", name: "", address: "", link: "" });
   const [form, setForm] = useState({ name: "", description: "", messageBody: "", senderId: "", scheduledAt: "" });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -75,6 +81,8 @@ export default function CampaignDetailPage() {
       setCampaign(item);
       setMedia(item.mediaAsset ?? null);
       setExtraSenders(item.extraSenderIds ?? []);
+      setTpl(item.templateName ? { name: item.templateName, language: item.templateLanguage ?? "en", params: item.templateParams ?? [] } : null);
+      setPin({ lat: item.locationLat === null || item.locationLat === undefined ? "" : String(item.locationLat), lng: item.locationLng === null || item.locationLng === undefined ? "" : String(item.locationLng), name: item.locationName ?? "", address: item.locationAddress ?? "", link: "" });
       setContacts((audienceData.contacts ?? []).slice(0, 50000));
       setSenders(senderData.senders.filter((sender: Sender) => sender.status === "CONNECTED"));
       setContactGroups(groupData.groups ?? []);
@@ -101,6 +109,31 @@ export default function CampaignDetailPage() {
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to add group contacts."); }
   }
 
+  // an official (Meta) number sends an approved template; an ordinary number does not use one
+  const selectedSender = senders.find(sender => sender.id === form.senderId);
+  const isOfficial = selectedSender?.connector === "META_CLOUD_API";
+  function tplBody() {
+    return isOfficial && tpl ? { templateName: tpl.name, templateLanguage: tpl.language, templateParams: tpl.params } : { templateName: null };
+  }
+  useEffect(() => {
+    if (!isOfficial || !form.senderId) { setTemplates([]); return; }
+    let alive = true;
+    setTemplatesError("");
+    void fetch(`/api/senders/${form.senderId}/templates`, { cache: "no-store" }).then(async r => { const d = await r.json(); if (!alive) return; if (!r.ok) setTemplatesError(d.error || "The templates could not be loaded."); else setTemplates(d.templates ?? []); }).catch(() => { if (alive) setTemplatesError("The templates could not be loaded."); });
+    return () => { alive = false; };
+  }, [isOfficial, form.senderId]);
+
+  // the map pin that goes with the campaign (null = none)
+  function pinBody() {
+    if (!pin.lat.trim() && !pin.lng.trim()) return null;
+    return { lat: pin.lat, lng: pin.lng, name: pin.name, address: pin.address };
+  }
+  function readMapsLink(text: string) {
+    const found = parseMapsLink(text);
+    if (found) { setPin(current => ({ ...current, lat: String(found.lat), lng: String(found.lng), link: text })); setError(""); setValidation(null); }
+    else { setPin(current => ({ ...current, link: text })); if (text.trim()) setError(isShortMapsLink(text) ? "That is a short Google Maps link, which hides the position. Open it in your browser, then copy the long address from the address bar (or type the latitude and longitude)." : "No position was found in that link. Type the latitude and longitude instead."); }
+  }
+
   function addTag(tag: string) {
     if (!tag || !editable) return;
     const ids = contacts.filter(contact => contact.tags?.includes(tag)).map(contact => contact.id);
@@ -117,7 +150,7 @@ export default function CampaignDetailPage() {
         body: JSON.stringify({
           name: form.name, description: form.description, messageBody: form.messageBody, senderId: form.senderId || null, extraSenderIds: extraSenders.filter(id => id !== form.senderId),
           scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : null,
-          mediaAssetId: media?.id ?? null, recipientContactIds: selected,
+          mediaAssetId: media?.id ?? null, location: pinBody(), ...tplBody(), recipientContactIds: selected,
         }),
       }));
       setNotice(`Draft saved · ${data.campaign._count.recipients} recipients`);
@@ -135,7 +168,7 @@ export default function CampaignDetailPage() {
         body: JSON.stringify({
           name: form.name, description: form.description, messageBody: form.messageBody, senderId: form.senderId || null, extraSenderIds: extraSenders.filter(id => id !== form.senderId),
           scheduledAt: null,
-          mediaAssetId: media?.id ?? null, recipientContactIds: selected,
+          mediaAssetId: media?.id ?? null, location: pinBody(), ...tplBody(), recipientContactIds: selected,
         }),
       }));
       const check = await readJson(await fetch(`/api/campaigns/${campaignId}/validate`, { method: "POST" }));
@@ -155,7 +188,7 @@ export default function CampaignDetailPage() {
         body: JSON.stringify({
           name: form.name, description: form.description, messageBody: form.messageBody, senderId: form.senderId || null, extraSenderIds: extraSenders.filter(id => id !== form.senderId),
           scheduledAt: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : null,
-          mediaAssetId: media?.id ?? null, recipientContactIds: selected,
+          mediaAssetId: media?.id ?? null, location: pinBody(), ...tplBody(), recipientContactIds: selected,
         }),
       }));
       const data = await readJson(await fetch(`/api/campaigns/${campaignId}/schedule`, { method: "POST" }));
@@ -213,7 +246,7 @@ export default function CampaignDetailPage() {
     try {
       await readJson(await fetch(`/api/campaigns/${campaignId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: form.name, description: form.description, messageBody: form.messageBody, senderId: form.senderId || null, extraSenderIds: extraSenders.filter(id => id !== form.senderId), scheduledAt: null, mediaAssetId: media?.id ?? null, recipientContactIds: selected }),
+        body: JSON.stringify({ name: form.name, description: form.description, messageBody: form.messageBody, senderId: form.senderId || null, extraSenderIds: extraSenders.filter(id => id !== form.senderId), scheduledAt: null, mediaAssetId: media?.id ?? null, location: pinBody(), ...tplBody(), recipientContactIds: selected }),
       }));
       const data = await readJson(await fetch(`/api/campaigns/${campaignId}/test`, { method: "POST" }));
       setNotice(`Test queued for ${data.to}. Open the "Message yourself" chat on that phone.`);
@@ -300,6 +333,17 @@ export default function CampaignDetailPage() {
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Personalisation preview</p><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-700">{renderMessageTemplate(form.messageBody || "Hello {{firstName}}, welcome to {{company}}.", contacts.find(contact=>selected.includes(contact.id)) ?? {})}</p><p className="mt-2 text-[10px] text-slate-400">Preview uses the first selected eligible contact.</p></div>
             {editable && <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_1.4fr_auto]"><input value={linkLabel} onChange={e=>setLinkLabel(e.target.value)} maxLength={60} placeholder="Button name, e.g. Book now" className={field}/><input value={linkUrl} onChange={e=>setLinkUrl(e.target.value)} placeholder="https://your-link" className={field}/><button type="button" onClick={addLink} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Add link</button><p className="text-[11px] text-slate-500 sm:col-span-3">WhatsApp does not show real buttons for a number linked this way, so the link is added to the message as a line that the customer can tap.</p></div>}
             <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-xs font-semibold text-slate-700">Picture, video, audio or PDF (optional)</p>{media ? <div className="mt-2 rounded-lg bg-slate-50 p-2 text-xs"><div className="flex items-center justify-between gap-2"><span className="truncate"><b>{kindLabel(media.kind)}</b> &middot; {media.filename} &middot; {(media.sizeBytes / 1048576).toFixed(1)} MB</span>{editable && <button type="button" onClick={() => { setMedia(null); setValidation(null); }} className="shrink-0 font-semibold text-rose-700">Remove</button>}</div>{media.kind === "IMAGE" && <img src={`/api/media/${media.id}`} alt="" className="mt-2 max-h-44 rounded-lg"/>}{media.kind === "VIDEO" && <video controls src={`/api/media/${media.id}`} className="mt-2 max-h-48 w-full rounded-lg"/>}{media.kind === "AUDIO" && <audio controls src={`/api/media/${media.id}`} className="mt-2 w-full"/>}{media.kind === "DOCUMENT" && <a href={`/api/media/${media.id}`} target="_blank" rel="noopener" className="mt-2 inline-block font-semibold text-emerald-800 underline">Open the PDF</a>}</div> : <p className="mt-1 text-[11px] text-slate-500">Up to 16 MB: JPG, PNG, WebP, MP4, 3GP, MP3, M4A, OGG, AMR or PDF. An audio file carries no text; with the others your message is the caption.</p>}{editable && <div className="mt-2 flex flex-wrap items-center gap-2"><label className="cursor-pointer rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">{uploading ? "Uploading..." : "Choose a file"}<input type="file" hidden disabled={uploading} accept=".jpg,.jpeg,.png,.webp,.mp4,.3gp,.mp3,.m4a,.ogg,.amr,.pdf" onChange={e => { void uploadFile(e.target.files?.[0]); e.target.value = ""; }}/></label>{recentMedia.length > 0 && <select value="" onChange={e => { const found = recentMedia.find(item => item.id === e.target.value); if (found) { setMedia(found); setValidation(null); } }} className="rounded-lg border border-slate-200 px-2 py-2 text-xs"><option value="">Use an earlier file...</option>{recentMedia.map(item => <option key={item.id} value={item.id}>{kindLabel(item.kind)}: {item.filename}</option>)}</select>}</div>}</div>
+            {isOfficial && <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3"><p className="text-xs font-semibold text-sky-900">Official WhatsApp number: choose an approved template</p>
+              <p className="mt-1 text-[11px] text-sky-900/80">A business-started chat on the official API must use a template that Meta approved. Create and approve templates in Meta Business Manager; they show here when approved. Clear the message text above: only the template is sent.</p>
+              {templatesError && <p className="mt-2 rounded-lg bg-rose-50 p-2 text-[11px] text-rose-700">{templatesError}</p>}
+              <select disabled={!editable} value={tpl ? `${tpl.name}|${tpl.language}` : ""} onChange={e => { const [name, language] = e.target.value.split("|"); const found = templates.find(item => item.name === name && item.language === language); setTpl(found ? { name: found.name, language: found.language, params: Array.from({ length: found.bodyVariableCount }, (_, i) => tpl?.name === found.name ? (tpl.params[i] ?? "") : "") } : null); setValidation(null); }} className={field + " mt-2"}><option value="">Choose a template…</option>{tpl && !templates.some(item => item.name === tpl.name && item.language === tpl.language) && <option value={`${tpl.name}|${tpl.language}`}>{tpl.name} ({tpl.language})</option>}{templates.map(item => <option key={`${item.name}|${item.language}`} value={`${item.name}|${item.language}`}>{item.name} &middot; {item.language}{item.category ? ` · ${item.category.toLowerCase()}` : ""}</option>)}</select>
+              {tpl && (() => { const found = templates.find(item => item.name === tpl.name && item.language === tpl.language); return <div className="mt-2 space-y-2">{found && <p className="whitespace-pre-wrap rounded-lg bg-white p-2 text-xs text-slate-700">{found.bodyText}</p>}{found?.hasHeaderMedia && <p className="text-[11px] text-amber-700">This template has a picture, video or document header, which is not supported yet. Choose a text template.</p>}{found?.hasButtonVariables && <p className="text-[11px] text-amber-700">This template has a button with a variable link, which is not supported yet.</p>}{tpl.params.map((value, i) => <label key={i} className="block text-[11px] font-semibold text-slate-700">Value for {`{{${i + 1}}}`}<input disabled={!editable} value={value} onChange={e => { const params = tpl.params.slice(); params[i] = e.target.value; setTpl({ ...tpl, params }); setValidation(null); }} list="tpl-fields" placeholder="firstName, company, city or text:Diwali sale" className={field + " mt-1"}/></label>)}<datalist id="tpl-fields"><option value="firstName"/><option value="lastName"/><option value="company"/><option value="phoneNumber"/></datalist></div>; })()}</div>}
+            <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-xs font-semibold text-slate-700">Location: a map pin (optional)</p><p className="mt-1 text-[11px] text-slate-500">The customer gets a WhatsApp location they can open in Maps. Your message text, if any, follows it. Use a pin or a file in one campaign, not both.</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2"><input disabled={!editable || Boolean(media)} value={pin.link} onChange={e => readMapsLink(e.target.value)} placeholder="Paste the Google Maps address here" className={field + " sm:col-span-2"}/>
+                <input disabled={!editable || Boolean(media)} value={pin.lat} onChange={e => { setPin({ ...pin, lat: e.target.value }); setValidation(null); }} inputMode="decimal" placeholder="Latitude, e.g. 23.3441" className={field}/><input disabled={!editable || Boolean(media)} value={pin.lng} onChange={e => { setPin({ ...pin, lng: e.target.value }); setValidation(null); }} inputMode="decimal" placeholder="Longitude, e.g. 85.3096" className={field}/>
+                <input disabled={!editable || Boolean(media)} value={pin.name} onChange={e => setPin({ ...pin, name: e.target.value })} maxLength={100} placeholder="Place name (optional)" className={field}/><input disabled={!editable || Boolean(media)} value={pin.address} onChange={e => setPin({ ...pin, address: e.target.value })} maxLength={200} placeholder="Address line (optional)" className={field}/></div>
+              {(pin.lat || pin.lng) && editable && <button type="button" onClick={() => { setPin({ lat: "", lng: "", name: "", address: "", link: "" }); setValidation(null); }} className="mt-2 text-xs font-semibold text-rose-700">Remove the location</button>}
+              {media && <p className="mt-2 text-[11px] text-amber-700">Remove the attached file first to use a location.</p>}</div>
             <label className="block text-xs font-semibold text-slate-700">Connected sender<select disabled={!editable} value={form.senderId} onChange={e=>{setForm({...form,senderId:e.target.value});setValidation(null)}} className={field+" mt-1.5"}><option value="">Assign later</option>{senders.map(sender=><option key={sender.id} value={sender.id}>{sender.displayName} · {sender.phoneNumberE164}</option>)}</select></label>
             {senders.filter(sender=>sender.id!==form.senderId).length>0&&<fieldset disabled={!editable} className="rounded-xl border border-slate-200 p-3"><legend className="px-1 text-xs font-semibold text-slate-700">Also send from (rotation, optional)</legend><p className="mb-2 text-[11px] text-slate-500">Tick more numbers and the messages are shared between them one by one. Each number keeps its own pace and daily limit, so a big list finishes sooner and no single number is overloaded.</p><div className="flex flex-wrap gap-x-4 gap-y-1">{senders.filter(sender=>sender.id!==form.senderId).map(sender=><label key={sender.id} className="flex items-center gap-1.5 text-xs text-slate-700"><input type="checkbox" checked={extraSenders.includes(sender.id)} onChange={e=>{setExtraSenders(current=>e.target.checked?[...current,sender.id]:current.filter(id=>id!==sender.id));setValidation(null)}}/>{sender.displayName} · {sender.phoneNumberE164}</label>)}</div></fieldset>}
             <label className="block text-xs font-semibold text-slate-700"><span className="inline-flex items-center gap-2"><CalendarClock size={14}/> Planned send time</span><input disabled={!editable} type="datetime-local" value={form.scheduledAt} onChange={e=>{setForm({...form,scheduledAt:e.target.value});setValidation(null)}} className={field+" mt-1.5"}/><span className="mt-1 block text-[11px] font-normal text-slate-400">Save a future time, validate the campaign, then choose Schedule. The worker queues it when due.</span></label>

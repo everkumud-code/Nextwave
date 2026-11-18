@@ -70,7 +70,7 @@ export async function verifyPasswordOtp(userId: string, code: string): Promise<"
 }
 
 export async function sendPasswordOtpEmail(user: { id: string; email: string; name: string | null }): Promise<boolean> {
-  if (!mailConfigured()) return false;
+  if (!(await mailConfigured())) return false;
   if (await tooManyTokens(user.id, "PASSWORD_OTP", 5)) return false;
   const code = await createPasswordOtp(user.id);
   const text = `Hello${user.name ? ` ${user.name}` : ""},\n\nYour NextWave code for changing your password is ${code}.\nIt works for ${OTP_MINUTES} minutes and only once. Never tell this code to anyone.\n\nIf you did not ask for it, please ignore this message and consider changing your password.`;
@@ -78,7 +78,7 @@ export async function sendPasswordOtpEmail(user: { id: string; email: string; na
 }
 
 export async function sendVerificationEmail(user: { id: string; email: string; name: string | null }, request?: Request): Promise<boolean> {
-  if (!mailConfigured()) return false;
+  if (!(await mailConfigured())) return false;
   if (await tooManyTokens(user.id, "EMAIL_VERIFY")) return false;
   const token = await createAuthToken(user.id, "EMAIL_VERIFY");
   const link = `${appUrl(request)}/verify-email?token=${token}`;
@@ -87,7 +87,7 @@ export async function sendVerificationEmail(user: { id: string; email: string; n
 }
 
 export async function sendPasswordResetEmail(user: { id: string; email: string; name: string | null }, request?: Request): Promise<boolean> {
-  if (!mailConfigured()) return false;
+  if (!(await mailConfigured())) return false;
   if (await tooManyTokens(user.id, "PASSWORD_RESET")) return false;
   const token = await createAuthToken(user.id, "PASSWORD_RESET");
   const code = await createPasswordOtp(user.id);
@@ -97,6 +97,6 @@ export async function sendPasswordResetEmail(user: { id: string; email: string; 
 }
 
 /** Sending campaigns needs a confirmed e-mail, but only when e-mail is switched on (otherwise nobody could ever confirm). */
-export function emailConfirmationMissing(user: { emailVerified?: Date | string | null }): boolean {
-  return mailConfigured() && !user.emailVerified;
+export async function emailConfirmationMissing(user: { emailVerified?: Date | string | null }): Promise<boolean> {
+  return !user.emailVerified && (await mailConfigured());
 }

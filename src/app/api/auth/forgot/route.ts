@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
-  const emailEnabled = mailConfigured();
+  const emailEnabled = await mailConfigured();
   if (email && emailEnabled) {
     const user = await prisma.user.findUnique({ where: { email }, select: { id: true, email: true, name: true } });
     if (user) await sendPasswordResetEmail(user, request);

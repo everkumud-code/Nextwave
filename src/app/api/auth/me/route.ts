@@ -5,5 +5,5 @@ import { mailConfigured } from "@/lib/mailer";
 export async function GET() {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ user: null }, { status: 200 });
-  return NextResponse.json({ ...context, mailEnabled: mailConfigured() });
+  return NextResponse.json({ ...context, mailEnabled: await mailConfigured() });
 }

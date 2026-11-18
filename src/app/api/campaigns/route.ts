@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders, isPlatformAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { CONTENT_SELECT, parsePinInput, templateParamIsValid } from "@/lib/campaign-content";
 import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
 import { findUnsupportedTemplateVariables } from "@/lib/message-template";
 import { getCustomFieldKeys } from "@/lib/custom-fields";
@@ -13,6 +14,7 @@ const campaignSelect = {
   scheduledAt: true, createdAt: true, updatedAt: true,
   sender: { select: { id: true, displayName: true, phoneNumberE164: true, status: true } },
   mediaAsset: { select: { id: true, kind: true, filename: true, sizeBytes: true } },
+  ...CONTENT_SELECT,
   _count: { select: { recipients: true, messages: true } },
 } as const;
 
@@ -59,6 +61,14 @@ export async function POST(request: Request) {
       if (problem) return NextResponse.json({ error: problem }, { status: 400 });
     }
 
+    const pinResult = parsePinInput(body.location);
+    if ("error" in pinResult) return NextResponse.json({ error: pinResult.error }, { status: 400 });
+    if (pinResult.pin && mediaAssetId) return NextResponse.json({ error: "Send either a file or a location in one campaign, not both." }, { status: 400 });
+    const templateName = typeof body.templateName === "string" && /^[a-z0-9_]{1,100}$/.test(body.templateName) ? body.templateName : null;
+    const templateLanguage = templateName ? (typeof body.templateLanguage === "string" && /^[a-zA-Z_]{2,12}$/.test(body.templateLanguage) ? body.templateLanguage : "en") : null;
+    const templateParams = templateName && Array.isArray(body.templateParams) ? (body.templateParams as unknown[]).filter((item): item is string => typeof item === "string").slice(0, 10) : [];
+    if (templateParams.some(spec => !templateParamIsValid(spec))) return NextResponse.json({ error: "A template variable must be a contact field (firstName, city ...) or text: followed by fixed words." }, { status: 400 });
+
     if (senderId) {
       const sender = await prisma.sender.findFirst({
         where: { id: senderId, organizationId, archivedAt: null },
@@ -81,6 +91,8 @@ export async function POST(request: Request) {
           description,
           messageBody,
           mediaAssetId,
+          ...(pinResult.pin ? { locationLat: pinResult.pin.lat, locationLng: pinResult.pin.lng, locationName: pinResult.pin.name, locationAddress: pinResult.pin.address } : {}),
+          templateName, templateLanguage, templateParams,
           senderId,
           status: "DRAFT",
           channel: "WHATSAPP",

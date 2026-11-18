@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { applyPendingProviderReceipts } from "@/lib/queue/provider-receipts";
 import { verifyMetaWebhookChallenge, verifyMetaWebhookSignature } from "@/lib/connectors/meta-cloud/webhook-security";
+import { getSetting } from "@/lib/platform-settings";
+import { isOptOutText, recordOptOut } from "../../../../../services/qr-runtime/src/optout";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +13,7 @@ export async function GET(request: Request) {
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token") ?? "";
   const challenge = url.searchParams.get("hub.challenge") ?? "";
-  const expected = process.env.META_WEBHOOK_VERIFY_TOKEN ?? "";
+  const expected = (await getSetting("meta.verifyToken")) ?? "";
   if (!expected) return new Response("Meta webhook verification is not configured.", { status: 503 });
   if (!verifyMetaWebhookChallenge(mode, token, challenge, expected)) {
     return new Response("Forbidden", { status: 403 });
@@ -30,6 +32,13 @@ type MetaChange = {
   value?: {
     metadata?: { phone_number_id?: string };
     statuses?: MetaStatus[];
+    messages?: Array<{
+      id?: string; from?: string; type?: string;
+      text?: { body?: string };
+      button?: { text?: string };
+      interactive?: { button_reply?: { title?: string }; list_reply?: { title?: string } };
+      image?: { caption?: string }; video?: { caption?: string }; document?: { caption?: string; filename?: string };
+    }>;
   };
 };
 
@@ -45,7 +54,7 @@ const transitions: Record<string, { allowedFrom: string[]; timestampField?: "sub
 };
 
 export async function POST(request: Request) {
-  const secret = process.env.META_APP_SECRET ?? "";
+  const secret = (await getSetting("meta.appSecret")) ?? "";
   if (!secret) return NextResponse.json({ error: "Meta webhook signing secret is not configured." }, { status: 503 });
 
   const rawBody = await request.text();
@@ -75,6 +84,28 @@ export async function POST(request: Request) {
         select: { id: true, organizationId: true },
       });
       if (!sender) { ignored += change.value?.statuses?.length ?? 1; continue; }
+
+      for (const message of change.value?.messages ?? []) {
+        const fromDigits = message.from && /^\d{8,15}$/.test(message.from) ? message.from : null;
+        if (!message.id || !fromDigits) { ignored++; continue; }
+        const e164 = `+${fromDigits}`;
+        const text = message.text?.body ?? message.button?.text ?? message.interactive?.button_reply?.title ?? message.interactive?.list_reply?.title;
+        const described = text?.trim()
+          ? text.trim().slice(0, 2000)
+          : message.image ? `[photo] ${message.image.caption ?? ""}`.trim()
+          : message.video ? `[video] ${message.video.caption ?? ""}`.trim()
+          : message.document ? `[document] ${message.document.filename ?? message.document.caption ?? ""}`.trim()
+          : message.type === "audio" ? "[voice message]" : message.type === "location" ? "[location]" : message.type === "sticker" ? "[sticker]" : null;
+        if (!described) { ignored++; continue; }
+        const contact = await prisma.contact.findFirst({ where: { organizationId: sender.organizationId, phoneNumberE164: e164 }, select: { id: true } });
+        const optOut = isOptOutText(text);
+        await prisma.inboundMessage.createMany({
+          data: [{ organizationId: sender.organizationId, senderId: sender.id, contactId: contact?.id ?? null, fromE164: e164, body: described, providerMessageId: message.id, isOptOut: optOut }],
+          skipDuplicates: true,
+        });
+        if (optOut) await recordOptOut(prisma, { organizationId: sender.organizationId, recipientE164: e164, evidenceRef: message.id });
+        processed++;
+      }
 
       for (const event of change.value?.statuses ?? []) {
         const providerMessageId = event.id;

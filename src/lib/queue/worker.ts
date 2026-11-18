@@ -13,6 +13,8 @@ export type ClaimedMessage = {
   body: string | null;
   idempotencyKey: string;
   mediaAssetId: string | null;
+  locationJson: unknown;
+  templateJson: unknown;
   kind: string;
   attemptCount: number;
   maxAttempts: number;
@@ -60,7 +62,7 @@ export async function claimQueuedMessages(limit = 25): Promise<ClaimedMessage[]>
       FROM candidates
       WHERE message."id" = candidates."id"
       RETURNING message."id", message."organizationId", message."campaignId",
-        message."senderId", message."recipientE164", message."body", message."idempotencyKey", message."mediaAssetId", message."kind",
+        message."senderId", message."recipientE164", message."body", message."idempotencyKey", message."mediaAssetId", message."locationJson", message."templateJson", message."kind",
         message."attemptCount", message."maxAttempts", message."lockToken"
     `);
   });

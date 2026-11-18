@@ -45,39 +45,33 @@ export default function BillingPage() {
     } catch { /* the page still works without them */ }
   }
 
-  useEffect(() => { void load(); void loadExtras(); }, []);
+  useEffect(() => {
+    void load(); void loadExtras();
+    const result = new URLSearchParams(window.location.search).get("payment");
+    const invoice = new URLSearchParams(window.location.search).get("invoice");
+    if (result === "success") setNotice(`Payment received. Credit added${invoice ? ` · invoice ${invoice}` : ""}.`);
+    else if (result === "failed") setError("The payment was not completed. No money was taken, or it will be returned by your bank.");
+    else if (result === "pending") setNotice("PayU has not confirmed the payment yet. If money was taken, the credit is added automatically as soon as PayU confirms (usually within minutes).");
+    else if (result === "invalid") setError("We could not confirm that payment. If money was taken, it is checked again automatically; please look again in a few minutes.");
+    // a payment whose browser was closed early is found here and added
+    void fetch("/api/payments/reconcile", { method: "POST" }).then(r => r.json()).then(data => { if (data?.settled > 0) { setNotice("An earlier payment was confirmed and the credit was added."); void load(); void loadExtras(); } }).catch(() => undefined);
+  }, []);
 
-  type RazorpayCheckout = { open: () => void; on: (event: string, handler: () => void) => void };
+  // PayU: the server signs the amount; the browser then posts the fields to PayU's payment page and PayU sends the customer back here
   async function buyCredit() {
     setPaying(true); setError(""); setNotice("");
     try {
-      const amountRupees = Number(buyAmount);
-      const response = await fetch("/api/payments/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amountRupees }) });
+      const response = await fetch("/api/payments/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amountRupees: Number(buyAmount) }) });
       const order = await response.json();
       if (!response.ok) throw new Error(order.error || "Unable to start the payment.");
-      await new Promise<void>((resolve, reject) => {
-        if ((window as unknown as { Razorpay?: unknown }).Razorpay) { resolve(); return; }
-        const script = document.createElement("script");
-        script.src = "https://checkout.razorpay.com/v1/checkout.js"; script.onload = () => resolve(); script.onerror = () => reject(new Error("The payment window could not be loaded. Check your internet and try again."));
-        document.body.appendChild(script);
-      });
-      const Razorpay = (window as unknown as { Razorpay: new (options: Record<string, unknown>) => RazorpayCheckout }).Razorpay;
-      const checkout = new Razorpay({
-        key: order.keyId, amount: order.amountPaise, currency: "INR", order_id: order.orderId, name: "NextWave", description: "Prepaid WhatsApp credit",
-        prefill: { email: order.email }, theme: { color: "#0A78CC" },
-        handler: async (result: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-          try {
-            const verify = await fetch("/api/payments/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId: result.razorpay_order_id, paymentId: result.razorpay_payment_id, signature: result.razorpay_signature }) });
-            const data = await verify.json();
-            if (!verify.ok) throw new Error(data.error || "The payment could not be verified.");
-            setNotice(`Payment received. Credit added${data.invoiceNumber ? ` · invoice ${data.invoiceNumber}` : ""}.`);
-            await load(); await loadExtras();
-          } catch (e) { setError(e instanceof Error ? e.message : "The payment could not be verified."); }
-          finally { setPaying(false); }
-        },
-        modal: { ondismiss: () => setPaying(false) },
-      });
-      checkout.open();
+      const form = document.createElement("form");
+      form.method = "POST"; form.action = order.action;
+      for (const [name, value] of Object.entries(order.fields as Record<string, string>)) {
+        const input = document.createElement("input");
+        input.type = "hidden"; input.name = name; input.value = value; form.appendChild(input);
+      }
+      document.body.appendChild(form);
+      form.submit();
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to start the payment."); setPaying(false); }
   }
 
@@ -107,7 +101,7 @@ export default function BillingPage() {
         </section>
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <div className="flex items-center gap-2"><Wallet size={18} className="text-emerald-700"/><h2 className="font-semibold">Buy credit</h2></div>
-          {pay?.enabled ? <><p className="mt-1 text-sm text-slate-500">Pay online by UPI, card or net banking. The credit is added as soon as the payment is confirmed, and an invoice is created.</p>
+          {pay?.enabled ? <><p className="mt-1 text-sm text-slate-500">Pay online with PayU: UPI, card or net banking. The credit is added as soon as the payment is confirmed, and an invoice is created.</p>
             <div className="mt-4 flex flex-wrap items-center gap-3"><div className="flex items-center rounded-xl border border-slate-300 bg-white px-3"><span className="text-sm text-slate-500">₹</span><input type="number" min={pay.minRupees} max={pay.maxRupees} value={buyAmount} onChange={e=>setBuyAmount(e.target.value)} className="w-32 border-0 px-2 py-3 text-sm focus:ring-0"/></div>{[500,1000,5000,10000].map(n=><button key={n} type="button" onClick={()=>setBuyAmount(String(n))} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">₹{n.toLocaleString("en-IN")}</button>)}<button onClick={buyCredit} disabled={paying} className="rounded-xl bg-[#0A78CC] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{paying ? "Opening payment…" : "Pay now"}</button></div></>
             : <p className="mt-1 text-sm text-slate-500">Online payment is not switched on yet. To add credit, please contact the NextWave team; they add it to your wallet and you get an invoice here.</p>}
         </section>

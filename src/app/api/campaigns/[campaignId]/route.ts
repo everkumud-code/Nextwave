@@ -5,6 +5,7 @@ import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience"
 import { findUnsupportedTemplateVariables } from "@/lib/message-template";
 import { getCustomFieldKeys } from "@/lib/custom-fields";
 import { mediaProblem } from "@/lib/media";
+import { CONTENT_SELECT, campaignPin, parsePinInput, templateParamIsValid } from "@/lib/campaign-content";
 
 export const runtime = "nodejs";
 type RouteContext = { params: Promise<{ campaignId: string }> };
@@ -16,7 +17,7 @@ export async function GET(_request: Request, route: RouteContext) {
   const campaign = await prisma.campaign.findFirst({
     where: { id: campaignId, organizationId: context.organization.id },
     select: {
-      id: true, campaignCode: true, extraSenderIds: true, name: true, description: true, messageBody: true, status: true, channel: true,
+      id: true, campaignCode: true, extraSenderIds: true, ...CONTENT_SELECT, name: true, description: true, messageBody: true, status: true, channel: true,
       scheduledAt: true, createdAt: true, updatedAt: true,
       sender: { select: { id: true, displayName: true, phoneNumberE164: true, status: true } },
       mediaAsset: { select: { id: true, kind: true, filename: true, sizeBytes: true } },
@@ -42,14 +43,15 @@ export async function PATCH(request: Request, route: RouteContext) {
   const { campaignId } = await route.params;
   const existing = await prisma.campaign.findFirst({
     where: { id: campaignId, organizationId: context.organization.id },
-    select: { id: true, status: true, messageBody: true, mediaAssetId: true },
+    select: { id: true, status: true, messageBody: true, mediaAssetId: true, ...CONTENT_SELECT },
   });
   if (!existing) return NextResponse.json({ error: "Campaign not found." }, { status: 404 });
   if (existing.status !== "DRAFT") return NextResponse.json({ error: "Only draft campaigns can be edited." }, { status: 409 });
 
   try {
     const body = await request.json();
-    const data: { name?: string; description?: string | null; messageBody?: string | null; senderId?: string | null; extraSenderIds?: string[]; scheduledAt?: Date | null; mediaAssetId?: string | null } = {};
+    const data: { name?: string; description?: string | null; messageBody?: string | null; senderId?: string | null; extraSenderIds?: string[]; scheduledAt?: Date | null; mediaAssetId?: string | null;
+      locationLat?: number | null; locationLng?: number | null; locationName?: string | null; locationAddress?: string | null; templateName?: string | null; templateLanguage?: string | null; templateParams?: string[] } = {};
     let recipientContactIds: string[] | undefined;
 
     if (body.name !== undefined) {
@@ -85,6 +87,27 @@ export async function PATCH(request: Request, route: RouteContext) {
         const problem = mediaProblem(asset?.kind, nextBody);
         if (problem) return NextResponse.json({ error: problem }, { status: 400 });
       }
+    }
+    if (body.location !== undefined) {
+      const pinResult = parsePinInput(body.location);
+      if ("error" in pinResult) return NextResponse.json({ error: pinResult.error }, { status: 400 });
+      data.locationLat = pinResult.pin?.lat ?? null; data.locationLng = pinResult.pin?.lng ?? null;
+      data.locationName = pinResult.pin?.name ?? null; data.locationAddress = pinResult.pin?.address ?? null;
+    }
+    if (body.templateName !== undefined) {
+      if (body.templateName === null || body.templateName === "") { data.templateName = null; data.templateLanguage = null; data.templateParams = []; }
+      else if (typeof body.templateName === "string" && /^[a-z0-9_]{1,100}$/.test(body.templateName)) {
+        data.templateName = body.templateName;
+        data.templateLanguage = typeof body.templateLanguage === "string" && /^[a-zA-Z_]{2,12}$/.test(body.templateLanguage) ? body.templateLanguage : "en";
+        const params = Array.isArray(body.templateParams) ? (body.templateParams as unknown[]).filter((item): item is string => typeof item === "string").slice(0, 10) : [];
+        if (params.some(spec => !templateParamIsValid(spec))) return NextResponse.json({ error: "A template variable must be a contact field (firstName, city ...) or text: followed by fixed words." }, { status: 400 });
+        data.templateParams = params;
+      } else return NextResponse.json({ error: "Invalid template name." }, { status: 400 });
+    }
+    {
+      const nextMedia = data.mediaAssetId !== undefined ? data.mediaAssetId : existing.mediaAssetId;
+      const nextPin = data.locationLat !== undefined ? (data.locationLat !== null) : Boolean(campaignPin(existing));
+      if (nextMedia && nextPin) return NextResponse.json({ error: "Send either a file or a location in one campaign, not both." }, { status: 400 });
     }
     if (body.senderId !== undefined) {
       if (body.senderId === null || body.senderId === "") data.senderId = null;

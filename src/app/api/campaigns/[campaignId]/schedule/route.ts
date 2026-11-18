@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { hasCurrentMarketingConsent } from "@/lib/campaign-audience-rules";
+import { CONTENT_SELECT, campaignPin, campaignTemplate, contentProblem } from "@/lib/campaign-content";
 import { findUnsupportedTemplateVariables } from "@/lib/message-template";
 import { getCustomFieldKeys } from "@/lib/custom-fields";
 
@@ -12,7 +13,7 @@ type RouteContext = { params: Promise<{ campaignId: string }> };
 export async function POST(_request: Request, route: RouteContext) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  if (emailConfirmationMissing(context.user)) return NextResponse.json({ error: "Please confirm your e-mail address first (we sent you a link). You can ask for a new one from the banner at the top of the dashboard." }, { status: 403 });
+  if (await emailConfirmationMissing(context.user)) return NextResponse.json({ error: "Please confirm your e-mail address first (we sent you a link). You can ask for a new one from the banner at the top of the dashboard." }, { status: 403 });
   if (!canManageSenders(context.role)) return NextResponse.json({ error: "You do not have permission to schedule campaigns." }, { status: 403 });
 
   const { campaignId } = await route.params;
@@ -20,15 +21,15 @@ export async function POST(_request: Request, route: RouteContext) {
     const campaign = await tx.campaign.findFirst({
       where: { id: campaignId, organizationId: context.organization.id },
       select: {
-        id: true, status: true, messageBody: true, senderId: true, scheduledAt: true, mediaAssetId: true,
-        sender: { select: { id: true, organizationId: true, status: true, archivedAt: true } },
+        id: true, status: true, messageBody: true, senderId: true, scheduledAt: true, mediaAssetId: true, ...CONTENT_SELECT,
+        sender: { select: { id: true, organizationId: true, status: true, archivedAt: true, connector: true } },
         recipients: { select: { contactId: true } },
       },
     });
     if (!campaign) return { error: "Campaign not found.", code: 404 };
     if (campaign.status !== "DRAFT") return { error: "Only draft campaigns can be scheduled.", code: 409 };
     if (!campaign.scheduledAt || campaign.scheduledAt.getTime() <= Date.now()) return { error: "Set a future planned send time before scheduling.", code: 400 };
-    if ((!campaign.messageBody?.trim() && !campaign.mediaAssetId) || (campaign.messageBody && findUnsupportedTemplateVariables(campaign.messageBody, await getCustomFieldKeys(context.organization.id)).length)) return { error: "Add valid message content before scheduling.", code: 400 };
+    if (contentProblem(campaign, campaign.sender?.connector) || (campaign.messageBody && findUnsupportedTemplateVariables(campaign.messageBody, await getCustomFieldKeys(context.organization.id)).length)) return { error: "Add valid message content before scheduling.", code: 400 };
     if (!campaign.senderId || !campaign.sender || campaign.sender.organizationId !== context.organization.id || campaign.sender.status !== "CONNECTED" || campaign.sender.archivedAt) {
       return { error: "Assign an active connected sender before scheduling.", code: 409 };
     }

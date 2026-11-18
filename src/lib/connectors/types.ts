@@ -33,6 +33,8 @@ export interface SendMessageInput {
   idempotencyKey: string;
   lockToken: string;
   consentRecordId: string;
+  /** Official API only: the approved template and the words for its {{1}}, {{2}} ... */
+  template?: { name: string; language: string; params: string[] } | null;
 }
 
 export interface SendMessageResult {
