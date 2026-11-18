@@ -1,7 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { hasCurrentMarketingConsent } from "@/lib/campaign-audience-rules";
 import { findUnsupportedTemplateVariables } from "@/lib/message-template";
+import { getCustomFieldKeys } from "@/lib/custom-fields";
 import { enqueueCampaignMessages } from "./enqueue";
+import { usableExtraSenderIds } from "./extra-senders";
 
 export type ScheduledCampaignResult =
   | { campaignId: string; status: "QUEUED"; recipientCount: number; queuedCount: number }
@@ -16,7 +18,7 @@ export async function queueDueScheduledCampaign(
   const campaign = await tx.campaign.findFirst({
     where: { id: campaignId, status: "SCHEDULED", scheduledAt: { lte: now } },
     select: {
-      id: true, organizationId: true, name: true, messageBody: true, senderId: true,
+      id: true, organizationId: true, name: true, messageBody: true, senderId: true, mediaAssetId: true, extraSenderIds: true,
       sender: { select: { id: true, organizationId: true, status: true, archivedAt: true } },
       recipients: { select: { contactId: true } },
     },
@@ -44,14 +46,14 @@ export async function queueDueScheduledCampaign(
     return { campaignId, status: "SKIPPED" };
   };
 
-  if (!campaign.messageBody?.trim()) return reject("Message content is missing.");
-  if (findUnsupportedTemplateVariables(campaign.messageBody).length) return reject("Message contains unsupported template variables.");
+  if (!campaign.messageBody?.trim() && !campaign.mediaAssetId) return reject("Message content is missing.");
+  if (campaign.messageBody && findUnsupportedTemplateVariables(campaign.messageBody, await getCustomFieldKeys(campaign.organizationId)).length) return reject("Message contains unsupported template variables.");
   if (!campaign.senderId || !campaign.sender || campaign.sender.organizationId !== campaign.organizationId || campaign.sender.status !== "CONNECTED" || campaign.sender.archivedAt) {
     return reject("The assigned sender is no longer connected.");
   }
 
   const selectedIds = [...new Set(campaign.recipients.map(item => item.contactId))];
-  if (!selectedIds.length || selectedIds.length > 5000) return reject("The scheduled audience is empty or exceeds the 5,000-recipient limit.");
+  if (!selectedIds.length || selectedIds.length > 50000) return reject("The scheduled audience is empty or exceeds the 50,000-recipient limit.");
 
   const contacts = await tx.contact.findMany({
     where: {
@@ -61,7 +63,7 @@ export async function queueDueScheduledCampaign(
       consents: { some: { channel: "WHATSAPP", purpose: "MARKETING", status: "GRANTED" } },
     },
     select: {
-      id: true, phoneNumberE164: true, firstName: true, lastName: true, company: true,
+      id: true, phoneNumberE164: true, firstName: true, lastName: true, company: true, customFields: true,
       consents: {
         where: { channel: "WHATSAPP", purpose: "MARKETING" },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -81,7 +83,7 @@ export async function queueDueScheduledCampaign(
 
   const outcome = await enqueueCampaignMessages(tx, {
     organizationId: campaign.organizationId,
-    campaign: { id: campaign.id, messageBody: campaign.messageBody!, senderId: campaign.senderId! },
+    campaign: { id: campaign.id, messageBody: campaign.messageBody ?? "", mediaAssetId: campaign.mediaAssetId, senderId: campaign.senderId!, extraSenderIds: await usableExtraSenderIds(tx, campaign.organizationId, campaign.senderId!, campaign.extraSenderIds) },
     eligible,
     actorUserId: null,
     now,

@@ -22,7 +22,7 @@ export async function processDueScheduledCampaigns(limit = 10): Promise<Schedule
     try {
       const outcome = await prisma.$transaction(
         tx => queueDueScheduledCampaign(tx, campaign.id),
-        { isolationLevel: "Serializable", maxWait: 5000, timeout: 20000 },
+        { isolationLevel: "Serializable", maxWait: 5000, timeout: 180000 },
       );
       if (outcome.status === "QUEUED") result.queued += 1;
       else if (outcome.status === "FAILED") result.failed += 1;

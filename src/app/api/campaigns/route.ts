@@ -3,12 +3,16 @@ import { getAuthContext, canManageSenders, isPlatformAdminUser } from "@/lib/aut
 import { prisma } from "@/lib/db/prisma";
 import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
 import { findUnsupportedTemplateVariables } from "@/lib/message-template";
+import { getCustomFieldKeys } from "@/lib/custom-fields";
+import { mediaProblem } from "@/lib/media";
+import { nextCampaignCode } from "@/lib/ids";
 
 export const runtime = "nodejs";
 const campaignSelect = {
-  id: true, name: true, description: true, messageBody: true, status: true, channel: true,
+  id: true, campaignCode: true, name: true, description: true, messageBody: true, status: true, channel: true,
   scheduledAt: true, createdAt: true, updatedAt: true,
   sender: { select: { id: true, displayName: true, phoneNumberE164: true, status: true } },
+  mediaAsset: { select: { id: true, kind: true, filename: true, sizeBytes: true } },
   _count: { select: { recipients: true, messages: true } },
 } as const;
 
@@ -45,8 +49,15 @@ export async function POST(request: Request) {
     const description = typeof body.description === "string" ? body.description.trim().slice(0, 1000) || null : null;
     const senderId = typeof body.senderId === "string" && body.senderId ? body.senderId : null;
     const messageBody = typeof body.messageBody === "string" ? body.messageBody.trim().slice(0, 4096) || null : null;
-    if (messageBody && findUnsupportedTemplateVariables(messageBody).length) return NextResponse.json({ error: "Message contains unsupported template variables." }, { status: 400 });
+    if (messageBody && findUnsupportedTemplateVariables(messageBody, await getCustomFieldKeys(organizationId)).length) return NextResponse.json({ error: "Message contains unsupported template variables." }, { status: 400 });
     if (!name) return NextResponse.json({ error: "Campaign name is required." }, { status: 400 });
+    const mediaAssetId = typeof body.mediaAssetId === "string" && body.mediaAssetId ? body.mediaAssetId : null;
+    if (mediaAssetId) {
+      const asset = await prisma.mediaAsset.findFirst({ where: { id: mediaAssetId, organizationId }, select: { kind: true } });
+      if (!asset) return NextResponse.json({ error: "File not found in this workspace." }, { status: 404 });
+      const problem = mediaProblem(asset.kind, messageBody);
+      if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+    }
 
     if (senderId) {
       const sender = await prisma.sender.findFirst({
@@ -57,16 +68,19 @@ export async function POST(request: Request) {
       if (sender.status !== "CONNECTED") return NextResponse.json({ error: "Select a connected sender to assign this campaign." }, { status: 409 });
     }
 
-    const eligibleIds = await getEligibleWhatsAppMarketingContactIds(organizationId, 5001);
-    if (eligibleIds.length > 5000) return NextResponse.json({ error: "Audience exceeds the 5,000-recipient campaign planning limit." }, { status: 400 });
+    // a new draft starts with every eligible contact when that is a small list; with a big list the person chooses (tags, groups, search)
+    const allEligible = await getEligibleWhatsAppMarketingContactIds(organizationId, 5001);
+    const eligibleIds = allEligible.length > 5000 ? [] : allEligible;
 
     const campaign = await prisma.$transaction(async tx => {
       const created = await tx.campaign.create({
         data: {
           organizationId,
+          campaignCode: await nextCampaignCode(tx, organizationId),
           name,
           description,
           messageBody,
+          mediaAssetId,
           senderId,
           status: "DRAFT",
           channel: "WHATSAPP",
@@ -85,7 +99,7 @@ export async function POST(request: Request) {
         },
       });
       return created;
-    });
+    }, { maxWait: 10_000, timeout: 120_000 });
     return NextResponse.json({ campaign }, { status: 201 });
   } catch (error) {
     console.error("Campaign creation failed", error);

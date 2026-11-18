@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { cleanOptionalText, isValidEmail, normalizePhoneNumber } from "@/lib/contacts";
+import { cleanTag, cleanTags } from "@/lib/tags";
 
 export const runtime = "nodejs";
 
 const PAGE_SIZE = 50;
 const contactSelect = {
   id: true, phoneNumber: true, phoneNumberE164: true, firstName: true,
-  lastName: true, email: true, company: true, customFields: true,
+  lastName: true, email: true, company: true, customFields: true, tags: true,
   status: true, source: true, createdAt: true, updatedAt: true,
   consents: { take: 1, orderBy: { createdAt: "desc" as const }, select: { channel: true, purpose: true, status: true, createdAt: true } },
 } as const;
@@ -21,9 +22,11 @@ export async function GET(request: Request) {
   const query = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
   const status = url.searchParams.get("status");
   const cursor = url.searchParams.get("cursor");
+  const tag = cleanTag(url.searchParams.get("tag"));
   const where = {
     organizationId: context.organization.id,
     ...(status && ["ACTIVE", "UNSUBSCRIBED", "INVALID", "BLOCKED"].includes(status) ? { status: status as "ACTIVE" | "UNSUBSCRIBED" | "INVALID" | "BLOCKED" } : {}),
+    ...(tag ? { tags: { has: tag } } : {}),
     ...(query ? {
       OR: [
         { phoneNumberE164: { contains: query.replace(/\s/g, "") } },
@@ -82,7 +85,7 @@ export async function POST(request: Request) {
           organizationId: context.organization.id,
           phoneNumber: phoneInput.trim(),
           phoneNumberE164: phone.e164,
-          firstName, lastName, email, company, source,
+          firstName, lastName, email, company, source, tags: cleanTags(body.tags),
           ...(customFields ? { customFields } : {}),
           ...(consentGiven ? {
             consents: { create: {

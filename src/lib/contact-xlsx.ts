@@ -1,5 +1,5 @@
 import { inflateRawSync } from "node:zlib";
-import { parseContactCsv, type ParsedContactRow } from "@/lib/contact-import";
+import { mapContactRows, suggestMapping, MAX_IMPORT_ROWS, type ParsedContactRow, type RawTable } from "@/lib/contact-import";
 
 type ZipEntry = { name: string; method: number; compressedSize: number; uncompressedSize: number; localOffset: number };
 
@@ -34,8 +34,8 @@ function readZipEntries(buffer: Buffer): Map<string, Buffer> {
   let totalUncompressed = 0;
   for (const entry of entries) {
     totalUncompressed += entry.uncompressedSize;
-    if (totalUncompressed > 20 * 1024 * 1024) throw new Error("The XLSX workbook expands beyond the 20 MB processing limit.");
-    if (entry.uncompressedSize > 10 * 1024 * 1024) throw new Error("An XLSX workbook entry exceeds the processing limit.");
+    if (totalUncompressed > 60 * 1024 * 1024) throw new Error("The XLSX workbook expands beyond the 60 MB processing limit.");
+    if (entry.uncompressedSize > 30 * 1024 * 1024) throw new Error("An XLSX workbook entry exceeds the processing limit.");
     if (entry.name.startsWith("xl/") && !entry.name.endsWith("/")) {
       const offset = entry.localOffset;
       if (offset + 30 > buffer.length || buffer.readUInt32LE(offset) !== 0x04034b50) {
@@ -74,42 +74,57 @@ function cellText(xml: string): string {
   return [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(match => decodeXml(match[1])).join("");
 }
 
-export function parseContactXlsx(input: Buffer, maxRows = 5000): ParsedContactRow[] {
-  if (input.length < 4 || input.length > 5 * 1024 * 1024) throw new Error("XLSX file must be between 1 byte and 5 MB.");
+export const MAX_XLSX_BYTES = 10 * 1024 * 1024;
+
+/** Every worksheet of the workbook with its name and the cells of its rows (empty rows are dropped). */
+export function readXlsxSheets(input: Buffer): { name: string; table: RawTable | null; rowCount: number }[] {
+  if (input.length < 4 || input.length > MAX_XLSX_BYTES) throw new Error("XLSX file must be between 1 byte and 10 MB.");
   const files = readZipEntries(input);
   const workbookXml = files.get("xl/workbook.xml")?.toString("utf8") ?? "";
-  const firstSheet = workbookXml.match(/<sheet\b[^>]*\br:id="([^"]+)"/)?.[1];
   const relationships = files.get("xl/_rels/workbook.xml.rels")?.toString("utf8") ?? "";
-  const relationship = firstSheet
-    ? [...relationships.matchAll(/<Relationship\b([^>]*)\/>/g)].find(match => match[1].match(/\bId="([^"]+)"/)?.[1] === firstSheet)
-    : undefined;
-  const target = relationship?.[1].match(/\bTarget="([^"]+)"/)?.[1];
-  const sheetPath = target
-    ? (target.startsWith("/") ? target.slice(1) : target.startsWith("xl/") ? target : `xl/${target.replace(/^\.\//, "")}`)
-    : "xl/worksheets/sheet1.xml";
-  const sheet = files.get(sheetPath);
-  if (!sheet) throw new Error("The XLSX workbook must contain a readable first worksheet.");
+  const targets = new Map<string, string>();
+  for (const match of relationships.matchAll(/<Relationship\b([^>]*)\/>/g)) {
+    const id = match[1].match(/\bId="([^"]+)"/)?.[1];
+    const target = match[1].match(/\bTarget="([^"]+)"/)?.[1];
+    if (id && target) targets.set(id, target.startsWith("/") ? target.slice(1) : target.startsWith("xl/") ? target : `xl/${target.replace(/^\.\//, "")}`);
+  }
+  const sheetRefs = [...workbookXml.matchAll(/<sheet\b([^>]*)\/?>/g)].map(match => ({
+    name: decodeXml(match[1].match(/\bname="([^"]*)"/)?.[1] ?? "Sheet"),
+    id: match[1].match(/\br:id="([^"]+)"/)?.[1] ?? "",
+  }));
+  if (!sheetRefs.length) sheetRefs.push({ name: "Sheet1", id: "" });
   const sharedXml = files.get("xl/sharedStrings.xml")?.toString("utf8") ?? "";
   const shared = [...sharedXml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map(match => cellText(match[1]));
-  const xml = sheet.toString("utf8");
-  const rows = [...xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)].map(match => {
-    const values: string[] = [];
-    for (const cell of match[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>|<c\b([^>]*)\/>/g)) {
-      const attrs = cell[1] ?? cell[3] ?? "";
-      const body = cell[2] ?? "";
-      const ref = attrs.match(/\br="([^"]+)"/)?.[1] ?? "A1";
-      const type = attrs.match(/\bt="([^"]+)"/)?.[1];
-      const raw = body.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? "";
-      const value = type === "s" ? (shared[Number(raw)] ?? "")
-        : type === "inlineStr" ? cellText(body)
-        : type === "b" ? (raw === "1" ? "true" : "false")
-        : decodeXml(raw);
-      values[columnIndex(ref)] = value;
-    }
-    return values.map(value => value ?? "");
-  }).filter(row => row.some(value => value.trim()));
-  if (rows.length < 2) throw new Error("XLSX must include a header row and at least one contact.");
-  if (rows.length - 1 > maxRows) throw new Error(`A single import is limited to ${maxRows} rows.`);
-  const csv = rows.map(row => row.map(value => `"${value.replace(/"/g, '""')}"`).join(",")).join("\n");
-  return parseContactCsv(csv, maxRows);
+  const sheets: { name: string; table: RawTable | null; rowCount: number }[] = [];
+  for (const ref of sheetRefs.slice(0, 30)) {
+    const sheet = files.get(targets.get(ref.id) ?? "xl/worksheets/sheet1.xml");
+    if (!sheet) continue;
+    const xml = sheet.toString("utf8");
+    const rows = [...xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)].map(match => {
+      const values: string[] = [];
+      for (const cell of match[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>|<c\b([^>]*)\/>/g)) {
+        const attrs = cell[1] ?? cell[3] ?? "";
+        const body = cell[2] ?? "";
+        const cellRef = attrs.match(/\br="([^"]+)"/)?.[1] ?? "A1";
+        const type = attrs.match(/\bt="([^"]+)"/)?.[1];
+        const raw = body.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? "";
+        const value = type === "s" ? (shared[Number(raw)] ?? "")
+          : type === "inlineStr" ? cellText(body)
+          : type === "b" ? (raw === "1" ? "true" : "false")
+          : decodeXml(raw);
+        values[columnIndex(cellRef)] = value;
+      }
+      return Array.from(values, value => (value ?? "").trim());
+    }).filter(row => row.some(value => value));
+    sheets.push({ name: ref.name, rowCount: Math.max(0, rows.length - 1), table: rows.length >= 2 ? { headers: rows[0], rows: rows.slice(1) } : null });
+  }
+  return sheets;
+}
+
+/** The first worksheet straight to contacts, columns recognised by their headings (kept for the simple case and the tests). */
+export function parseContactXlsx(input: Buffer, maxRows = MAX_IMPORT_ROWS): ParsedContactRow[] {
+  const sheet = readXlsxSheets(input).find(item => item.table);
+  if (!sheet?.table) throw new Error("XLSX must include a header row and at least one contact.");
+  if (sheet.table.rows.length > maxRows) throw new Error(`A single import is limited to ${maxRows} rows.`);
+  return mapContactRows(sheet.table, suggestMapping(sheet.table.headers, { unknownAsCustom: true }), maxRows);
 }

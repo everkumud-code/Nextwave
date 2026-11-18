@@ -28,8 +28,8 @@ export async function POST(request: Request) {
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 80) : "";
     const description = typeof body.description === "string" ? body.description.trim().slice(0, 500) || null : null;
     if (!name) return NextResponse.json({ error: "Group name is required." }, { status: 400 });
-    if (!Array.isArray(body.contactIds) || body.contactIds.length > 5000 || body.contactIds.some((id: unknown) => typeof id !== "string")) {
-      return NextResponse.json({ error: "Select up to 5,000 contacts for this group." }, { status: 400 });
+    if (!Array.isArray(body.contactIds) || body.contactIds.length > 50000 || body.contactIds.some((id: unknown) => typeof id !== "string")) {
+      return NextResponse.json({ error: "Select up to 50,000 contacts for this group." }, { status: 400 });
     }
     const contactIds = [...new Set(body.contactIds as string[])];
     const ownedCount = contactIds.length ? await prisma.contact.count({
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
         },
       });
       return created;
-    });
+    }, { maxWait: 10_000, timeout: 120_000 });
     return NextResponse.json({ group }, { status: 201 });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "P2002") {

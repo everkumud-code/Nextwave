@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getAuthContext, isPlatformAdminUser } from "@/lib/auth";
+import { issueInvoice } from "@/lib/invoices";
 
 export const runtime = "nodejs";
 
@@ -13,8 +14,9 @@ export async function GET() {
   const organizations = await prisma.organization.findMany({
     orderBy: { createdAt: "desc" },
     select: {
-      id: true, name: true, slug: true, status: true, createdAt: true,
+      id: true, clientCode: true, name: true, slug: true, status: true, createdAt: true,
       creditAccount: { select: { balancePaise: true, pricePerMessagePaise: true, defaultIntervalSeconds: true, updatedAt: true } },
+      senders: { where: { archivedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, displayName: true, phoneNumberE164: true, status: true, dailyLimitOverride: true } },
     },
   });
   return NextResponse.json({ organizations });
@@ -32,6 +34,44 @@ export async function POST(request: Request) {
   if (!organizationId || !Number.isSafeInteger(amountPaise) || amountPaise < 0 || amountPaise > 2_000_000_000 ||
       (pricePerMessagePaise !== undefined && (!Number.isSafeInteger(pricePerMessagePaise) || pricePerMessagePaise < 1 || pricePerMessagePaise > 100_000))) {
     return NextResponse.json({ error: "Provide a valid client, non-negative top-up amount in paise, and optional per-message rate in paise." }, { status: 400 });
+  }
+
+  // A manual deduction: takes credit off the wallet, always with a reason, never below zero, and it is written in the ledger and the audit log.
+  if (body.deductPaise !== undefined) {
+    const deductPaise = Number(body.deductPaise);
+    const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 240) : "";
+    if (!Number.isSafeInteger(deductPaise) || deductPaise < 1 || deductPaise > 2_000_000_000 || amountPaise > 0 || reason.length < 3) {
+      return NextResponse.json({ error: "Enter the amount to deduct and a reason (at least 3 characters). Top up and deduct are separate actions." }, { status: 400 });
+    }
+    try {
+      const outcome = await prisma.$transaction(async tx => {
+        const account = await tx.creditAccount.findUnique({ where: { organizationId } });
+        if (!account) return { error: "This workspace has no wallet yet.", status: 404 as const };
+        const taken = await tx.creditAccount.updateMany({ where: { id: account.id, balancePaise: { gte: deductPaise } }, data: { balancePaise: { decrement: deductPaise } } });
+        if (!taken.count) return { error: `The wallet holds only ${(account.balancePaise / 100).toFixed(2)} rupees; you cannot deduct more than that.`, status: 409 as const };
+        const balanceAfterPaise = account.balancePaise - deductPaise;
+        await tx.creditTransaction.create({
+          data: {
+            organizationId, accountId: account.id, type: "DEBIT", amountPaise: deductPaise, balanceAfterPaise,
+            reference: "manual-deduction", description: `Manual deduction by admin: ${reason}`, actorUserId: context.user.id,
+          },
+        });
+        await tx.auditLog.create({
+          data: { organizationId, actorUserId: context.user.id, action: "credits.admin_deduction", resourceType: "CreditAccount", resourceId: account.id, metadata: { deductPaise, reason, balanceAfterPaise } },
+        });
+        return { balancePaise: balanceAfterPaise, pricePerMessagePaise: account.pricePerMessagePaise };
+      }, { isolationLevel: "Serializable" });
+      if ("error" in outcome) return NextResponse.json({ error: outcome.error }, { status: outcome.status });
+      return NextResponse.json({
+        account: {
+          balancePaise: outcome.balancePaise, balanceRupees: outcome.balancePaise / 100,
+          pricePerMessagePaise: outcome.pricePerMessagePaise, pricePerMessageRupees: outcome.pricePerMessagePaise / 100,
+        },
+      });
+    } catch (error) {
+      console.error("Admin credit deduction failed", error);
+      return NextResponse.json({ error: "Unable to deduct credit." }, { status: 500 });
+    }
   }
 
   try {
@@ -57,6 +97,8 @@ export async function POST(request: Request) {
             description: typeof body.description === "string" ? body.description.slice(0, 240) : "Admin prepaid credit allocation",
           },
         });
+        // every top-up gets an invoice number of its own (BPML/<year>/NR<n>/INV<n>)
+        await issueInvoice(tx, { organizationId, amountPaise, description: typeof body.description === "string" && body.description.trim() ? body.description.trim() : "Prepaid WhatsApp credit" });
       }
       await tx.auditLog.create({
         data: {

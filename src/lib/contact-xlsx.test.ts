@@ -79,5 +79,23 @@ test("XLSX contact parser reads shared strings, inline strings and consent flags
 
 test("XLSX contact parser rejects non-workbook input and missing worksheets", () => {
   assert.throws(() => parseContactXlsx(Buffer.from("not-a-zip")), /valid XLSX/);
-  assert.throws(() => parseContactXlsx(makeZip({ "xl/workbook.xml": "<workbook/>" })), /first worksheet/);
+  assert.throws(() => parseContactXlsx(makeZip({ "xl/workbook.xml": "<workbook/>" })), /header row/);
+});
+
+import { readXlsxSheets } from "./contact-xlsx";
+
+test("every worksheet of a workbook is listed with its name and rows", () => {
+  const cell = (ref: string, text: string) => `<c r="${ref}" t="inlineStr"><is><t>${text}</t></is></c>`;
+  const sheet = (rows: string[][]) => `<worksheet><sheetData>${rows.map((row, r) => `<row r="${r + 1}">${row.map((text, c) => cell(`${String.fromCharCode(65 + c)}${r + 1}`, text)).join("")}</row>`).join("")}</sheetData></worksheet>`;
+  const workbook = makeZip({
+    "xl/workbook.xml": `<workbook xmlns:r="x"><sheets><sheet name="Delhi" sheetId="1" r:id="rId1"/><sheet name="Pune" sheetId="2" r:id="rId2"/><sheet name="Empty" sheetId="3" r:id="rId3"/></sheets></workbook>`,
+    "xl/_rels/workbook.xml.rels": `<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Target="worksheets/sheet3.xml"/></Relationships>`,
+    "xl/worksheets/sheet1.xml": sheet([["phone", "city"], ["9876543210", "Delhi"], ["9876543211", "Delhi"]]),
+    "xl/worksheets/sheet2.xml": sheet([["Mobile", "Shehar"], ["9876543212", "Pune"]]),
+    "xl/worksheets/sheet3.xml": sheet([["phone"]]),
+  });
+  const sheets = readXlsxSheets(workbook);
+  assert.deepEqual(sheets.map(item => [item.name, item.rowCount]), [["Delhi", 2], ["Pune", 1], ["Empty", 0]]);
+  assert.deepEqual(sheets[1].table?.headers, ["Mobile", "Shehar"]);
+  assert.equal(sheets[2].table, null);
 });

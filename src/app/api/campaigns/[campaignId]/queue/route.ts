@@ -1,8 +1,12 @@
+import { emailConfirmationMissing } from "@/lib/auth-tokens";
 import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders, isPlatformAdminUser } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { hasCurrentMarketingConsent } from "@/lib/campaign-audience-rules";
+import { usableExtraSenderIds } from "@/lib/queue/extra-senders";
 import { findUnsupportedTemplateVariables } from "@/lib/message-template";
+import { getCustomFieldKeys } from "@/lib/custom-fields";
+import { mediaProblem } from "@/lib/media";
 import { enqueueCampaignMessages } from "@/lib/queue/enqueue";
 
 export const runtime = "nodejs";
@@ -11,6 +15,7 @@ type RouteContext = { params: Promise<{ campaignId: string }> };
 export async function POST(_request: Request, route: RouteContext) {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+  if (emailConfirmationMissing(context.user)) return NextResponse.json({ error: "Please confirm your e-mail address first (we sent you a link). You can ask for a new one from the banner at the top of the dashboard." }, { status: 403 });
   const body = await _request.json().catch(() => ({}));
   const requestedOrganizationId = typeof body.organizationId === "string" ? body.organizationId : null;
   const isAdmin = isPlatformAdminUser(context.user);
@@ -24,15 +29,17 @@ export async function POST(_request: Request, route: RouteContext) {
       const campaign = await tx.campaign.findFirst({
         where: { id: campaignId, organizationId: organizationId },
         select: {
-          id: true, name: true, messageBody: true, status: true, scheduledAt: true, senderId: true,
+          id: true, name: true, messageBody: true, status: true, scheduledAt: true, senderId: true, extraSenderIds: true, mediaAssetId: true, mediaAsset: { select: { kind: true } },
           sender: { select: { id: true, organizationId: true, status: true, archivedAt: true } },
           recipients: { select: { contactId: true } },
         },
       });
       if (!campaign) return { error: "Campaign not found.", statusCode: 404 as const };
       if (campaign.status !== "DRAFT") return { error: "Only draft campaigns can be queued.", statusCode: 409 as const };
-      if (!campaign.messageBody?.trim()) return { error: "Add message content before queueing.", statusCode: 400 as const };
-      if (findUnsupportedTemplateVariables(campaign.messageBody).length) return { error: "Fix unsupported message variables before queueing.", statusCode: 400 as const };
+      if (!campaign.messageBody?.trim() && !campaign.mediaAssetId) return { error: "Add a message, or attach a file, before sending.", statusCode: 400 as const };
+      const mediaIssue = mediaProblem(campaign.mediaAsset?.kind, campaign.messageBody);
+      if (mediaIssue) return { error: mediaIssue, statusCode: 400 as const };
+      if (campaign.messageBody && findUnsupportedTemplateVariables(campaign.messageBody, await getCustomFieldKeys(organizationId)).length) return { error: "Fix unsupported message variables before queueing.", statusCode: 400 as const };
       if (!campaign.sender || !campaign.senderId || campaign.sender.organizationId !== organizationId || campaign.sender.status !== "CONNECTED" || campaign.sender.archivedAt) {
         return { error: "Assign an active connected sender before queueing.", statusCode: 409 as const };
       }
@@ -41,7 +48,7 @@ export async function POST(_request: Request, route: RouteContext) {
       }
       const selectedIds = [...new Set(campaign.recipients.map(item => item.contactId))];
       if (selectedIds.length === 0) return { error: "Select at least one recipient before queueing.", statusCode: 400 as const };
-      if (selectedIds.length > 5000) return { error: "Campaign exceeds the 5,000-recipient queue limit.", statusCode: 400 as const };
+      if (selectedIds.length > 50000) return { error: "Campaign exceeds the 50,000-recipient queue limit.", statusCode: 400 as const };
 
       const contacts = await tx.contact.findMany({
         where: {
@@ -51,7 +58,7 @@ export async function POST(_request: Request, route: RouteContext) {
           consents: { some: { channel: "WHATSAPP", purpose: "MARKETING", status: "GRANTED" } },
         },
         select: {
-          id: true, phoneNumberE164: true, firstName: true, lastName: true, company: true,
+          id: true, phoneNumberE164: true, firstName: true, lastName: true, company: true, customFields: true,
           consents: {
             where: { channel: "WHATSAPP", purpose: "MARKETING" },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -72,7 +79,7 @@ export async function POST(_request: Request, route: RouteContext) {
 
       const outcome = await enqueueCampaignMessages(tx, {
         organizationId,
-        campaign: { id: campaign.id, messageBody: campaign.messageBody!, senderId: campaign.senderId! },
+        campaign: { id: campaign.id, messageBody: campaign.messageBody ?? "", mediaAssetId: campaign.mediaAssetId, senderId: campaign.senderId!, extraSenderIds: await usableExtraSenderIds(tx, organizationId, campaign.senderId!, campaign.extraSenderIds) },
         eligible,
         actorUserId: context.user.id,
       });
@@ -106,7 +113,7 @@ export async function POST(_request: Request, route: RouteContext) {
         },
       });
       return { campaignId: campaign.id, recipientCount: eligible.length, queuedCount: created.count, chargedPaise: actualChargePaise, balanceAfterPaise, pricePerMessagePaise: account.pricePerMessagePaise, intervalSeconds: account.defaultIntervalSeconds, status: "QUEUED" as const };
-    }, { isolationLevel: "Serializable" });
+    }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 180_000 });
 
     if ("error" in result) return NextResponse.json(result, { status: result.statusCode });
     return NextResponse.json({ result, message: "Campaign jobs are durably queued. Message delivery requires an enabled dispatch worker." }, { status: 202 });
