@@ -99,6 +99,7 @@ export default function Home() {
         body: JSON.stringify(authForm),
       }));
       const me = await readJson(await fetch("/api/auth/me", { cache: "no-store" }));
+      window.dispatchEvent(new Event("nw-splash"));      // the opening wave plays when someone signs in
       setAuth(me);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to authenticate.");
