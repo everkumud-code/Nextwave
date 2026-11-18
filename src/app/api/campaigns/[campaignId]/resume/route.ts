@@ -17,23 +17,27 @@ export async function POST(_request: Request, route: RouteContext) {
   const result = await prisma.$transaction(async tx => {
     const campaign = await tx.campaign.findFirst({
       where: { id: campaignId, organizationId },
-      select: { id: true, status: true, senderId: true, sender: { select: { status: true, archivedAt: true } } },
+      select: { id: true, status: true, senderId: true, sender: { select: { status: true, archivedAt: true, connector: true } } },
     });
     if (!campaign) return { error: "Campaign not found.", code: 404 };
     if (campaign.status !== "PAUSED") return { error: "Only paused campaigns can be resumed.", code: 409 };
     if (!campaign.senderId || !campaign.sender || campaign.sender.status !== "CONNECTED" || campaign.sender.archivedAt) {
       return { error: "Reconnect the assigned sender before resuming.", code: 409 };
     }
-    const account = await tx.creditAccount.findUnique({ where: { organizationId }, select: { defaultIntervalSeconds: true } });
-    const intervalSeconds = Math.max(10, Math.min(90, account?.defaultIntervalSeconds || 60));
+    // an ordinary number gets a rotating gap (10 to 90 s at random) again; an official one one second
+    const gapMin = campaign.sender.connector === "META_CLOUD_API" ? 1 : 10;
+    const gapSpan = campaign.sender.connector === "META_CLOUD_API" ? 0 : 80;
     await tx.$executeRaw(Prisma.sql`
       UPDATE "Message" AS m
-      SET "nextAttemptAt" = NOW() + (ordered.position - 1) * ${intervalSeconds}::int * INTERVAL '1 second',
+      SET "nextAttemptAt" = NOW() + ordered.offset_seconds * INTERVAL '1 second',
           "updatedAt" = NOW()
       FROM (
-        SELECT "id", ROW_NUMBER() OVER (ORDER BY "nextAttemptAt" ASC, "createdAt" ASC) AS position
-        FROM "Message"
-        WHERE "organizationId" = ${organizationId} AND "campaignId" = ${campaign.id} AND "status" = 'QUEUED'
+        SELECT "id", SUM("gap") OVER (ORDER BY "nextAttemptAt" ASC, "createdAt" ASC, "id" ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) - "gap" AS offset_seconds
+        FROM (
+          SELECT "id", "nextAttemptAt", "createdAt", ${gapMin}::int + random() * ${gapSpan}::int AS "gap"
+          FROM "Message"
+          WHERE "organizationId" = ${organizationId} AND "campaignId" = ${campaign.id} AND "status" = 'QUEUED'
+        ) AS gaps
       ) AS ordered
       WHERE m."id" = ordered."id"
     `);
@@ -45,7 +49,7 @@ export async function POST(_request: Request, route: RouteContext) {
         action: "campaign.resumed",
         resourceType: "Campaign",
         resourceId: campaign.id,
-        metadata: { intervalSeconds },
+        metadata: { rotatingGap: gapSpan > 0 },
       },
     });
     return { ok: true as const, campaignId: campaign.id, status: "QUEUED" as const };

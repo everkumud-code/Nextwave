@@ -15,6 +15,7 @@ export async function GET() {
     orderBy: { createdAt: "desc" },
     select: {
       id: true, clientCode: true, name: true, slug: true, status: true, createdAt: true,
+      memberships: { where: { role: "OWNER" }, take: 1, orderBy: { createdAt: "asc" }, select: { user: { select: { name: true, email: true } } } },
       creditAccount: { select: { balancePaise: true, pricePerMessagePaise: true, defaultIntervalSeconds: true, updatedAt: true } },
       senders: { where: { archivedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, displayName: true, phoneNumberE164: true, status: true, dailyLimitOverride: true } },
     },
