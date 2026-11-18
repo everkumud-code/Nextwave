@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export async function POST() {
   const context = await getAuthContext();
   if (!context) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  if (!mailConfigured()) return NextResponse.json({ error: "E-mail codes are not switched on for this platform yet." }, { status: 503 });
+  if (!(await mailConfigured())) return NextResponse.json({ error: "E-mail codes are not switched on for this platform yet." }, { status: 503 });
   const sent = await sendPasswordOtpEmail({ id: context.user.id, email: context.user.email, name: context.user.name });
   if (!sent) return NextResponse.json({ error: "The code could not be sent right now (at most 5 an hour). Try again a little later." }, { status: 429 });
   const [name, domain] = context.user.email.split("@");

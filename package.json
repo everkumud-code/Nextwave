@@ -16,7 +16,7 @@
     "qr:typecheck": "tsc -p services/qr-runtime/tsconfig.json --noEmit",
     "qr:build": "tsc -p services/qr-runtime/tsconfig.json",
     "qr:start": "node services/qr-runtime/dist/index.js",
-    "test": "tsx --test src/lib/sessions/*.test.ts src/lib/*.test.ts src/lib/queue/*.test.ts services/qr-runtime/src/*.test.ts",
+    "test": "tsx --test src/lib/sessions/*.test.ts src/lib/*.test.ts src/lib/queue/*.test.ts src/lib/connectors/meta-cloud/*.test.ts services/qr-runtime/src/*.test.ts",
     "queue:worker": "tsx scripts/queue-worker.mts"
   },
   "dependencies": {

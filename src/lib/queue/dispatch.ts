@@ -183,7 +183,7 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         await fail("CONSENT_REVOKED", "The recipient is no longer eligible under the current contact and consent state.", false);
         continue;
       }
-      if (!job.body && !job.mediaAssetId) {
+      if (!job.body && !job.mediaAssetId && !job.locationJson && !job.templateJson) {
         await fail("INVALID_MESSAGE", "Message body is empty.", false);
         continue;
       }
@@ -194,7 +194,8 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
 
       // today's allowance for this number (it grows with the days since the number was first connected)
       const timeZone = sender.organization.timezone;
-      const allowance = sender.dailyLimitOverride ?? dailyLimitForAge(daysSince(sender.sessions[0]?.connectedAt ?? sender.createdAt, new Date()));
+      // an official number starts at Meta's first tier (1,000 a day); the admin raises it as Meta raises the tier
+      const allowance = sender.dailyLimitOverride ?? (sender.connector === "META_CLOUD_API" ? 1000 : dailyLimitForAge(daysSince(sender.sessions[0]?.connectedAt ?? sender.createdAt, new Date())));
       const sentToday = await prisma.message.count({
         where: { organizationId: job.organizationId, senderId: sender.id, status: { in: ["SUBMITTED", "SENT", "DELIVERED", "READ"] }, submittedAt: { gte: startOfLocalDay(new Date(), timeZone) } },
       });
@@ -219,6 +220,7 @@ export async function dispatchQueuedBatch(limit = 25): Promise<DispatchBatchResu
         idempotencyKey: job.idempotencyKey,
         lockToken: job.lockToken,
         consentRecordId: isTest ? "TEST" : contact!.consents[0].id,
+        template: (job.templateJson as { name: string; language: string; params: string[] } | null) ?? null,
       });
 
       if (!sendResult.accepted || sendResult.state === "FAILED") {

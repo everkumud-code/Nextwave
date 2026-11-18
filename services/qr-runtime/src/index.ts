@@ -604,12 +604,12 @@ async function sendMessage(body: Record<string, unknown>) {
     }),
     prisma.message.findFirst({
       where: { organizationId, senderId, recipientE164: recipient, idempotencyKey },
-      select: { id: true, status: true, lockToken: true, providerMessageId: true, body: true, mediaAssetId: true, kind: true },
+      select: { id: true, status: true, lockToken: true, providerMessageId: true, body: true, mediaAssetId: true, locationJson: true, kind: true },
     }),
   ]);
   if (!message) throw Object.assign(new Error("Queued message was not found for this workspace and sender."), { statusCode: 404, errorCode: "MESSAGE_NOT_FOUND" });
   if ((message.body ?? "") !== messageBody) throw Object.assign(new Error("Message body does not match the persisted queue job."), { statusCode: 409, errorCode: "MESSAGE_PAYLOAD_MISMATCH" });
-  if (!messageBody.trim() && !message.mediaAssetId) throw Object.assign(new Error("A message needs text or a file."), { statusCode: 400, errorCode: "INVALID_MESSAGE" });
+  if (!messageBody.trim() && !message.mediaAssetId && !message.locationJson) throw Object.assign(new Error("A message needs text or a file."), { statusCode: 400, errorCode: "INVALID_MESSAGE" });
   if (message.providerMessageId) return { accepted: true, providerMessageId: message.providerMessageId, state: "SUBMITTED" };
   if (message.status !== "QUEUED" || message.lockToken !== lockToken) {
     throw Object.assign(new Error("Message queue lease is no longer valid."), { statusCode: 409, errorCode: "MESSAGE_LOCK_MISMATCH" });
@@ -644,7 +644,15 @@ async function sendMessage(body: Record<string, unknown>) {
     else if (asset.kind === "AUDIO") content = { audio: buffer, mimetype: asset.mimeType, ptt: false };
     else content = { document: buffer, mimetype: "application/pdf", fileName: asset.filename, caption };
   }
-  const sent = await session.socket.sendMessage(jid, content);
+  let sent;
+  const pin = message.locationJson as { lat?: number; lng?: number; name?: string | null; address?: string | null } | null;
+  if (pin && typeof pin.lat === "number" && typeof pin.lng === "number") {
+    // a map pin; any text of the campaign follows as a second message of the same job (same charge)
+    const pinSent = await session.socket.sendMessage(jid, { location: { degreesLatitude: pin.lat, degreesLongitude: pin.lng, name: pin.name ?? undefined, address: pin.address ?? undefined } });
+    sent = messageBody.trim() ? await session.socket.sendMessage(jid, { text: messageBody }) : pinSent;
+  } else {
+    sent = await session.socket.sendMessage(jid, content);
+  }
   const providerMessageId = sent?.key?.id;
   if (!providerMessageId) throw Object.assign(new Error("Messaging runtime did not return a provider message identifier."), { statusCode: 502, errorCode: "TEMPORARY_PROVIDER_ERROR" });
 

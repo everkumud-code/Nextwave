@@ -212,6 +212,7 @@ model Sender {
   dailyLimitOverride       Int?
   organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   inboundMessages          InboundMessage[]
+  providerCredential       ProviderCredential?
   sessions                 QrSession[]
   qrCredentials            QrCredential[]
   deliveryReceipts         QrDeliveryReceipt[]
@@ -325,29 +326,38 @@ model ConsentRecord {
 }
 
 model Campaign {
-  id             String              @id @default(cuid())
-  organizationId String
-  senderId       String?
-  name           String
-  description    String?
-  messageBody    String?
-  mediaAssetId   String?
+  id               String              @id @default(cuid())
+  organizationId   String
+  senderId         String?
+  name             String
+  description      String?
+  messageBody      String?
+  mediaAssetId     String?
   /// The campaign's unique number: the client's number and CP<serial>, for example BPML/2026/NR001/CP0007
-  campaignCode   String?             @unique
+  campaignCode     String?             @unique
   /// Other senders that share this campaign with senderId (messages are dealt out to all of them in turn)
-  extraSenderIds String[]            @default([])
-  status         CampaignStatus      @default(DRAFT)
-  channel        String              @default("WHATSAPP")
-  scheduledAt    DateTime?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sender         Sender?             @relation(fields: [senderId], references: [id], onDelete: SetNull)
-  mediaAsset     MediaAsset?         @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
-  recipients     CampaignRecipient[]
-  messages       Message[]
+  extraSenderIds   String[]            @default([])
+  /// A map pin sent as a WhatsApp location message
+  locationLat      Float?
+  locationLng      Float?
+  locationName     String?
+  locationAddress  String?
+  /// Official API (Meta Cloud) only: the approved template to send, and what goes into its {{1}}, {{2}} ... (a contact field name such as firstName or city, or text:<fixed words>)
+  templateName     String?
+  templateLanguage String?
+  templateParams   String[]            @default([])
+  status           CampaignStatus      @default(DRAFT)
+  channel          String              @default("WHATSAPP")
+  scheduledAt      DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sender           Sender?             @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  mediaAsset       MediaAsset?         @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  recipients       CampaignRecipient[]
+  messages         Message[]
 
   @@index([organizationId, status, scheduledAt])
   @@index([senderId, status])
@@ -374,6 +384,10 @@ model Message {
   senderId          String?
   recipientE164     String
   body              String?
+  /// A map pin to send as a location message: {lat, lng, name, address}
+  locationJson      Json?
+  /// Official API only: {name, language, params: [text, text ...]}
+  templateJson      Json?
   mediaAssetId      String?
   /// CAMPAIGN, or TEST for a message the owner sends to the sender's own number to see how a campaign looks
   kind              String        @default("CAMPAIGN")
@@ -617,4 +631,25 @@ model Invoice {
   paymentOrder   PaymentOrder? @relation(fields: [paymentOrderId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, issuedAt])
+}
+
+/// Settings that the platform admin enters on a screen (e-mail account, payment gateway, official WhatsApp app). Secret values are stored encrypted.
+model PlatformSetting {
+  key         String   @id
+  value       String
+  isSecret    Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+/// The access token of an official (Meta Cloud API) sender, stored encrypted.
+model ProviderCredential {
+  id             String   @id @default(cuid())
+  senderId       String   @unique
+  organizationId String
+  wabaId         String
+  accessTokenEnc String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  sender         Sender   @relation(fields: [senderId], references: [id], onDelete: Cascade)
 }

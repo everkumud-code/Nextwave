@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthContext, canManageSenders } from "@/lib/auth";
+import { CONTENT_SELECT } from "@/lib/campaign-content";
 import { prisma } from "@/lib/db/prisma";
 import { getEligibleWhatsAppMarketingContactIds } from "@/lib/campaign-audience";
 import { nextCampaignCode } from "@/lib/ids";
@@ -16,7 +17,7 @@ export async function POST(_request: Request, route: RouteContext) {
   const organizationId = context.organization.id;
   const source = await prisma.campaign.findFirst({
     where: { id: campaignId, organizationId },
-    select: { name: true, description: true, messageBody: true, mediaAssetId: true, senderId: true, extraSenderIds: true, recipients: { select: { contactId: true } } },
+    select: { name: true, description: true, messageBody: true, mediaAssetId: true, senderId: true, extraSenderIds: true, ...CONTENT_SELECT, recipients: { select: { contactId: true } } },
   });
   if (!source) return NextResponse.json({ error: "Campaign not found." }, { status: 404 });
   const eligible = new Set(await getEligibleWhatsAppMarketingContactIds(organizationId, 100000));
@@ -25,7 +26,7 @@ export async function POST(_request: Request, route: RouteContext) {
     const created = await tx.campaign.create({
       data: {
         organizationId, campaignCode: await nextCampaignCode(tx, organizationId), name: `${source.name} (copy)`.slice(0, 120), description: source.description, messageBody: source.messageBody,
-        mediaAssetId: source.mediaAssetId, senderId: source.senderId, extraSenderIds: source.extraSenderIds, status: "DRAFT", channel: "WHATSAPP",
+        mediaAssetId: source.mediaAssetId, senderId: source.senderId, extraSenderIds: source.extraSenderIds, locationLat: source.locationLat, locationLng: source.locationLng, locationName: source.locationName, locationAddress: source.locationAddress, templateName: source.templateName, templateLanguage: source.templateLanguage, templateParams: source.templateParams, status: "DRAFT", channel: "WHATSAPP",
         recipients: { create: contactIds.map(contactId => ({ contactId, status: "PENDING" as const })) },
       },
       select: { id: true, campaignCode: true },
