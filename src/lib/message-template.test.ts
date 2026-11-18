@@ -29,3 +29,13 @@ test("extra columns of the contact's row can be used in a message", () => {
   assert.deepEqual(findUnsupportedTemplateVariables("{{city}} {{firstName}} {{oops}}", ["city"]), ["oops"]);
   assert.deepEqual(findUnsupportedTemplateVariables("{{city|x}}"), ["city"]);
 });
+
+test("names are not picky: {{First Name}}, {{firstName}} and {{first_name}} are the same, and a leftover is never sent as raw text", () => {
+  const contact = { firstName: "Asha", lastName: "Kumar", company: "Acme", phoneNumber: "+919876543210", custom: { order_no: "A-12", City: "Pune" } };
+  assert.equal(renderMessageTemplate("Hello, {{First Name}}!", contact), "Hello, Asha!");
+  assert.equal(renderMessageTemplate("{{ first_name }} {{LAST NAME}} {{Company Name}} {{Phone}}", contact), "Asha Kumar Acme +919876543210");
+  assert.equal(renderMessageTemplate("Hi {{First Name|friend}}", { firstName: "" }), "Hi friend");
+  assert.equal(renderMessageTemplate("Order {{Order No}} in {{city}}", contact), "Order A-12 in Pune");
+  assert.deepEqual(findUnsupportedTemplateVariables("Hello {{First Name}} {{Frist Nme}} {{ }} {{Order No}}", ["order_no"]), ["Frist Nme", ""]);
+  assert.deepEqual(findUnsupportedTemplateVariables("Hello {{First Name}}"), []);
+});
