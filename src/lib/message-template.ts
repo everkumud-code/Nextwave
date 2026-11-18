@@ -45,6 +45,25 @@ function customValue(custom: unknown, name: string): string {
   return "";
 }
 
+/** Marks the place of a value that is empty and has no fallback; removed again by tidy(). */
+const EMPTY = String.fromCharCode(1);
+
+/**
+ * When a value is empty (for example a contact without a first name) and no fallback was given, the word is simply left out
+ * and the punctuation around it is tidied: "Hello, {{First Name}}, welcome" becomes "Hello, welcome", "Hi {{First Name}}!" becomes "Hi!".
+ */
+function tidy(text: string): string {
+  if (!text.includes(EMPTY)) return text;
+  const e = EMPTY;
+  return text
+    .replace(new RegExp(`(?:[ \t]*${e})+[ \t]*`, "g"), e)       // several empty values and the spaces around them become one mark
+    .replace(new RegExp(`,${e},`, "g"), ",")                       // ", X," -> ","
+    .replace(new RegExp(`${e}([,.!?;:])`, "g"), "$1")              // "Hi X!" -> "Hi!"
+    .replace(new RegExp(`^${e}`, "gm"), "")                        // at the start of a line
+    .replace(new RegExp(`${e}$`, "gm"), "")                        // at the end of a line
+    .replace(new RegExp(e, "g"), " ");                             // in the middle of words: one space
+}
+
 export function renderMessageTemplate(template: string, contact: MessageTemplateContact): string {
   const values: Record<string, string> = {
     firstName: contact.firstName ?? "",
@@ -52,9 +71,9 @@ export function renderMessageTemplate(template: string, contact: MessageTemplate
     company: contact.company ?? "",
     phoneNumber: contact.phoneNumber ?? "",
   };
-  return template.replace(VARIABLE, (_match, rawName: string, fallback: string | undefined) => {
+  return tidy(template.replace(VARIABLE, (_match, rawName: string, fallback: string | undefined) => {
     const builtin = BUILTIN_BY_NAME[squash(rawName)];
     const value = (builtin ? values[builtin] : customValue(contact.custom, rawName)).trim();
-    return value || (fallback ?? "").trim();
-  });
+    return value || (fallback ?? "").trim() || EMPTY;
+  }));
 }

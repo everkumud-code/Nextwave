@@ -13,7 +13,7 @@ test("renders supported contact variables", () => {
 
 test("reports unsupported variables and treats missing values as empty", () => {
   assert.deepEqual(findUnsupportedTemplateVariables("Hi {{firstName}} {{unknown}} {{unknown}}"), ["unknown"]);
-  assert.equal(renderMessageTemplate("Hello {{firstName}} {{lastName}}", {}), "Hello  ");
+  assert.equal(renderMessageTemplate("Hello {{firstName}} {{lastName}}", {}), "Hello");
 });
 
 test("a variable can carry what to write when it is empty", () => {
@@ -38,4 +38,19 @@ test("names are not picky: {{First Name}}, {{firstName}} and {{first_name}} are 
   assert.equal(renderMessageTemplate("Order {{Order No}} in {{city}}", contact), "Order A-12 in Pune");
   assert.deepEqual(findUnsupportedTemplateVariables("Hello {{First Name}} {{Frist Nme}} {{ }} {{Order No}}", ["order_no"]), ["Frist Nme", ""]);
   assert.deepEqual(findUnsupportedTemplateVariables("Hello {{First Name}}"), []);
+});
+
+test("a person without a first name simply gets the message without the name, with the punctuation tidied", () => {
+  const none = { firstName: "" };
+  const asha = { firstName: "Asha" };
+  const text = "Hello, {{First Name}}, 🌿 PICNIC KA PLAN!";
+  assert.equal(renderMessageTemplate(text, none), "Hello, 🌿 PICNIC KA PLAN!");
+  assert.equal(renderMessageTemplate(text, asha), "Hello, Asha, 🌿 PICNIC KA PLAN!");
+  assert.equal(renderMessageTemplate("Hi {{First Name}}!", none), "Hi!");
+  assert.equal(renderMessageTemplate("Dear {{First Name}},\nWelcome", none), "Dear,\nWelcome");
+  assert.equal(renderMessageTemplate("{{First Name}} welcome", none), "welcome");
+  assert.equal(renderMessageTemplate("Namaste {{First Name}} ji, aaiye", none), "Namaste ji, aaiye");
+  assert.equal(renderMessageTemplate("Hi {{First Name}} {{Last Name}}.", none), "Hi.");
+  assert.equal(renderMessageTemplate("Hi {{First Name|friend}}!", none), "Hi friend!");
+  assert.equal(renderMessageTemplate("Order {{Order No}} for {{First Name}}", { firstName: "", custom: { order_no: "A-1" } }), "Order A-1 for");
 });
